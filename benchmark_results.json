@@ -1,0 +1,193 @@
+{
+  "generated": "2026-11-11T00:08:44-05:00",
+  "machine": {
+    "cpu": "Intel(R) Core(TM) i5-8250U CPU @ 1.60GHz (8 logical cores)",
+    "os": "Windows 10 (10.0.26300)",
+    "python": "3.11.0",
+    "tensorflow": "2.15.1",
+    "mediapipe": "0.10.14",
+    "opencv": "4.11.0",
+    "gpu": null
+  },
+  "config": {
+    "source": "webcam",
+    "warmup": 20,
+    "iterations": 300
+  },
+  "stages": [
+    {
+      "name": "Preprocessing (flip + BGR→RGB)",
+      "group": "vision",
+      "mean_ms": 0.4942336680445199,
+      "median_ms": 0.43620000360533595,
+      "p95_ms": 0.8394450240302838,
+      "min_ms": 0.30780001543462276,
+      "max_ms": 2.697699994314462,
+      "std_ms": 0.27674180864057063
+    },
+    {
+      "name": "MediaPipe Pose",
+      "group": "vision",
+      "mean_ms": 79.69039566756692,
+      "median_ms": 69.9348500056658,
+      "p95_ms": 123.9766350161517,
+      "min_ms": 57.760900002904236,
+      "max_ms": 160.52199999103323,
+      "std_ms": 22.345221057701224
+    },
+    {
+      "name": "MediaPipe Hands (gesture mode)",
+      "group": "vision",
+      "mean_ms": 101.17820766560423,
+      "median_ms": 86.90235001267865,
+      "p95_ms": 161.68805498746227,
+      "min_ms": 37.16860001441091,
+      "max_ms": 329.88739997381344,
+      "std_ms": 38.22840740507292
+    },
+    {
+      "name": "Feature extraction (66-d)",
+      "group": "vision",
+      "mean_ms": 0.16638966607085118,
+      "median_ms": 0.1480999926570803,
+      "p95_ms": 0.2756300003966317,
+      "min_ms": 0.09439996210858226,
+      "max_ms": 1.1645000195130706,
+      "std_ms": 0.0906403534829248
+    },
+    {
+      "name": "Dense: model.predict",
+      "group": "model",
+      "mean_ms": 158.31466433339907,
+      "median_ms": 124.64125000406057,
+      "p95_ms": 303.0649450287458,
+      "min_ms": 54.87659998470917,
+      "max_ms": 1087.039400008507,
+      "std_ms": 110.43492288382802
+    },
+    {
+      "name": "Dense: model(x, training=False)",
+      "group": "model",
+      "mean_ms": 1.776439665700309,
+      "median_ms": 1.7539000255055726,
+      "p95_ms": 1.8685350194573405,
+      "min_ms": 1.7195999971590936,
+      "max_ms": 2.799400012008846,
+      "std_ms": 0.09094599537237752
+    },
+    {
+      "name": "BiLSTM-Attn: to_sequence + model.predict",
+      "group": "model",
+      "mean_ms": 114.39275799804211,
+      "median_ms": 118.05110002751462,
+      "p95_ms": 222.93111999752009,
+      "min_ms": 56.75340001471341,
+      "max_ms": 645.0660999980755,
+      "std_ms": 69.81025167724427
+    },
+    {
+      "name": "BiLSTM-Attn: to_sequence + model(x, training=False)",
+      "group": "model",
+      "mean_ms": 452.8454246655262,
+      "median_ms": 394.9896499980241,
+      "p95_ms": 803.9776249992428,
+      "min_ms": 242.49020003480837,
+      "max_ms": 1190.0520999915898,
+      "std_ms": 204.06774017944693
+    },
+    {
+      "name": "Dense: tf.function(model)",
+      "group": "model",
+      "mean_ms": 5.883547332099018,
+      "median_ms": 3.023199999006465,
+      "p95_ms": 14.12988002412022,
+      "min_ms": 1.3806999777443707,
+      "max_ms": 140.14869998209178,
+      "std_ms": 12.841897651851747
+    },
+    {
+      "name": "BiLSTM-Attn: to_sequence + tf.function(model)",
+      "group": "model",
+      "mean_ms": 9.030528665171005,
+      "median_ms": 7.6994000119157135,
+      "p95_ms": 17.558149973046973,
+      "min_ms": 5.796699959319085,
+      "max_ms": 42.369999981019646,
+      "std_ms": 4.180554872288411
+    },
+    {
+      "name": "End-to-end: Pose demo path (Dense predict)",
+      "group": "total",
+      "mean_ms": 273.4116566701171,
+      "median_ms": 212.13880000868812,
+      "p95_ms": 483.3051600056934,
+      "min_ms": 178.14050003653392,
+      "max_ms": 1066.2480000173673,
+      "std_ms": 125.47815362099725
+    },
+    {
+      "name": "End-to-end: gesture mode (+ Hands)",
+      "group": "total",
+      "mean_ms": 374.58986433572136,
+      "median_ms": 306.87554998439737,
+      "p95_ms": 644.2850250197807,
+      "min_ms": 220.82289995159954,
+      "max_ms": 1321.4011999662034,
+      "std_ms": 153.2688171317304
+    }
+  ],
+  "throughput": [
+    {
+      "model": "Dense",
+      "batch": 1,
+      "samples_per_s": 468.3402110262192,
+      "ms_per_sample": 2.135199960321188
+    },
+    {
+      "model": "Dense",
+      "batch": 32,
+      "samples_per_s": 11395.605488247975,
+      "ms_per_sample": 0.08775312562647741
+    },
+    {
+      "model": "Dense",
+      "batch": 324,
+      "samples_per_s": 78774.61701631974,
+      "ms_per_sample": 0.012694444452745863
+    },
+    {
+      "model": "BiLSTM-Attention",
+      "batch": 1,
+      "samples_per_s": 158.728899494179,
+      "ms_per_sample": 6.300049979472533
+    },
+    {
+      "model": "BiLSTM-Attention",
+      "batch": 32,
+      "samples_per_s": 2053.3090380284834,
+      "ms_per_sample": 0.48701874948164914
+    },
+    {
+      "model": "BiLSTM-Attention",
+      "batch": 324,
+      "samples_per_s": 5049.308680628996,
+      "ms_per_sample": 0.19804691359757182
+    }
+  ],
+  "models": [
+    {
+      "name": "Dense (model_001.h5)",
+      "params": 17092,
+      "accuracy": 1.0
+    },
+    {
+      "name": "BiLSTM-Attention (bilstm_attention.keras)",
+      "params": 66596,
+      "accuracy": 1.0
+    }
+  ],
+  "end_to_end": {
+    "mean_ms": 273.4116566701171,
+    "fps": 3.657488536439918
+  }
+}

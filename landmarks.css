@@ -1,0 +1,100 @@
+/* Interactive 33-landmark map (landmarks.js). Uses the page tokens from style.css. */
+.lmap { margin-top: 36px; }
+.lm-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+.lm-filters button {
+  font: 500 0.78rem var(--font-body); color: var(--muted); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer;
+  transition: color .2s, border-color .2s, background .2s;
+}
+.lm-filters button:hover { color: var(--text); border-color: var(--line-strong); }
+.lm-filters button[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.lm-toggle { margin-left: auto; font-size: 0.8rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+
+.lm-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 24px; align-items: start; }
+.lm-fig {
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 12px;
+  background:
+    radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 65%),
+    var(--panel);
+}
+.lm-fig svg { display: block; width: 100%; max-height: 520px; margin: 0 auto; touch-action: manipulation; }
+
+.lm-bones line { stroke: var(--bone-2); stroke-width: 3; stroke-linecap: round; transition: stroke .2s, opacity .2s, stroke-width .2s; }
+.lm-bones line.on { stroke: var(--c-out); stroke-width: 4.5; }
+.lm-bones line.dim { opacity: .25; }
+.lm-vec { stroke: var(--c-feat); stroke-width: 1.6; stroke-dasharray: 4 3; opacity: 0; transition: opacity .2s; }
+.lm-vec.show { opacity: .9; }
+
+.lm-pt { cursor: pointer; outline: none; }
+.lm-pt .lm-hit { fill: transparent; }
+.lm-pt .lm-dot { fill: var(--c-C); stroke: var(--bg); stroke-width: 1.2; transition: r .2s, fill .2s; }
+.lm-pt.s-L .lm-dot { fill: var(--c-L); }
+.lm-pt.s-R .lm-dot { fill: var(--c-R); }
+.lm-pt .lm-ring { fill: none; stroke: var(--c-out); stroke-width: 1.6; stroke-dasharray: 3 2.4; }
+.lm-pt .lm-num { font: 600 9px var(--font-mono); fill: var(--muted); pointer-events: none; }
+.lm-pt .lm-num.sm { font-size: 6.5px; }
+.no-nums .lm-pt .lm-num { display: none; }
+.no-nums .lm-pt.on .lm-num { display: inline; }
+.lm-pt.on .lm-dot { r: 7; fill: var(--c-out); }
+.lm-pt.on .lm-num { fill: var(--text); }
+.lm-pt:focus-visible .lm-hit { stroke: var(--accent); stroke-width: 1.5; }
+.lm-pt.dim { opacity: .22; }
+
+.lm-cap { margin: 8px 0 0; font-size: 0.76rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; justify-content: center; }
+.lm-cap .k { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.lm-cap .k.s-L { background: var(--c-L); }
+.lm-cap .k.s-R { background: var(--c-R); }
+.lm-cap .k.ring { border: 1.5px dashed var(--c-out); }
+
+.lm-info {
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; background: var(--panel-2);
+  min-height: 168px; margin-bottom: 14px;
+}
+.lm-info h4 { margin: 2px 0 6px; font: 600 1.15rem var(--font-head); color: var(--text); }
+.lm-info .lm-idx { margin: 0; font: 500 0.74rem var(--font-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+.lm-info .lm-vecpos { margin: 0 0 8px; font-size: 0.82rem; color: var(--muted); }
+.lm-info .lm-vecpos code { color: var(--c-feat); }
+.lm-info ul { margin: 0; padding-left: 18px; font-size: 0.86rem; color: var(--text); }
+.lm-info li + li { margin-top: 4px; }
+
+.lm-list { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 14px; font-size: 0.8rem; }
+.lm-list li { break-inside: avoid; display: flex; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 6px; color: var(--muted); cursor: pointer; transition: background .15s, color .15s, opacity .2s; }
+.lm-list li:hover, .lm-list li.on { background: var(--panel-2); color: var(--text); }
+.lm-list li.on { box-shadow: inset 2px 0 0 var(--c-out); }
+.lm-list li.dim { opacity: .35; }
+.lm-list .no { font: 600 0.7rem var(--font-mono); min-width: 22px; text-align: right; color: var(--c-C); }
+.lm-list .no.s-L { color: var(--c-L); }
+.lm-list .no.s-R { color: var(--c-R); }
+
+@media (max-width: 860px) {
+  .lm-body { grid-template-columns: minmax(0, 1fr); }
+  .lm-fig svg { max-height: 440px; }
+}
+@media (max-width: 420px) {
+  .lm-list { columns: 1; }
+  .lm-toggle { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lm-bones line, .lm-vec, .lm-pt .lm-dot, .lm-list li { transition: none; }
+}
+
+/* torso-length view */
+.lm-torso { opacity: 0; transition: opacity .25s; pointer-events: none; }
+.tlen .lm-torso { opacity: 1; }
+.lm-torso .pair { stroke: var(--c-feat); stroke-width: 1.6; stroke-dasharray: 3 3; }
+.lm-torso .len { stroke: var(--c-out); stroke-width: 3.5; stroke-linecap: round; }
+.lm-torso .mid { fill: var(--c-out); stroke: var(--bg); stroke-width: 1.5; }
+.lm-torso .tag { font: 700 11px var(--font-mono); fill: var(--c-out); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
+.lm-torso .len-t { font-size: 9.5px; }
+.tlen .lm-bones line:not(.dim) { stroke: var(--bone-2); }
+.lm-steps { margin: 4px 0 10px; padding-left: 20px; font-size: 0.86rem; color: var(--text); }
+.lm-steps li + li { margin-top: 3px; }
+.lm-ex { margin: 0 0 10px; font-size: 0.82rem; color: var(--muted); }
+.lm-ex summary { cursor: pointer; color: var(--accent); }
+.lm-ex table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font: 0.76rem var(--font-mono); }
+.lm-ex td, .lm-ex th { padding: 3px 6px; border-bottom: 1px solid var(--line); text-align: left; color: var(--text); font-weight: 400; }
+.lm-ex th { color: var(--c-out); font-weight: 600; }
+.lm-ex p { margin: 4px 0 0; font-size: 0.76rem; }
+.lm-code { margin: 0 0 8px; padding: 10px 12px; border-radius: 8px; background: var(--code-bg); color: #e6ecf5; font: 0.74rem/1.5 var(--font-mono); overflow-x: auto; white-space: pre; }
+.lm-note { margin: 0; font-size: 0.78rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .lm-torso { transition: none; } }

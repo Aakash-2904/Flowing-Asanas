@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flowing Asanas</title>
+<meta name="description" content="Technical documentation for Flowing Asanas: yoga posture detection with MediaPipe Pose and a BiLSTM-Attention classifier (ICERCS 2024, IEEE).">
+<meta name="color-scheme" content="dark light">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="landmarks.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topnav" id="top">
+  <div class="topnav-inner">
+    <a class="brand" href="#hero" aria-label="Flowing Asanas, back to top">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Flowing Asanas</span>
+    </a>
+    <nav aria-label="Sections">
+      <ul class="navlinks">
+        <li><a href="#demo">Demo</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#data-prep">Data</a></li>
+        <li><a href="#model">Model</a></li>
+        <li><a href="#results">Results</a></li>
+        <li><a href="#performance">Performance</a></li>
+        <li><a href="#setup">Setup</a></li>
+        <li><a href="#limitations">Limitations</a></li>
+        <li><a href="#cite">Cite</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============================== HERO ============================== -->
+<section class="hero" id="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">ICERCS 2024 &middot; IEEE &middot; Paper ICERCS0931</p>
+      <h1>Flowing Asanas</h1>
+      <p class="subtitle">Enhancing Yoga Posture Detection with BiLSTM Attention and MediaPipe</p>
+      <p class="authors">Dr. Noel Jeygar Robert V, P. Aakash Kumar, Abha Rani, Shraddha Pandey</p>
+      <p class="affil">School of Computer Science and Engineering, Vellore Institute of Technology, Chennai</p>
+      <p class="lede">An ordinary RGB webcam, 33 MediaPipe landmarks per frame and a 66.6K-parameter BiLSTM-Attention classifier. Together they check whether you are holding an asana correctly, and a hold timer runs only while you are.</p>
+      <ul class="hero-stats">
+        <li><strong>95.0%</strong><span>&plusmn; 3.0% accuracy under simulated webcam perturbations</span></li>
+        <li><strong>33</strong><span>landmarks, 66-d feature vector</span></li>
+        <li><strong>4</strong><span>trained asanas</span></li>
+      </ul>
+      <div class="hero-cta">
+        <a class="btn primary" href="#architecture">How it works</a>
+        <a class="btn" href="#setup">Run it locally</a>
+      </div>
+    </div>
+
+    <figure class="hero-figure">
+      <div class="stage" id="stage" role="img" aria-label="Animated 3D stick-figure skeleton with 33 glowing MediaPipe landmarks, morphing between High Lunge and Pyramid pose. Drag to rotate.">
+        <div class="rig" id="rig">
+          <div class="spin">
+            <div class="floor"></div>
+            <div class="body">
+              <div class="bar" style="--w:22px"></div>
+              <i class="lm L" style="--x:22px" title="23 left hip"></i>
+              <i class="lm R" style="--x:-22px" title="24 right hip"></i>
+
+              <div class="j torso"><div class="bone up" style="--l:100px"></div>
+                <div class="j chest">
+                  <div class="bar" style="--w:34px"></div>
+                  <i class="lm L" style="--x:34px" title="11 left shoulder"></i>
+                  <i class="lm R" style="--x:-34px" title="12 right shoulder"></i>
+
+                  <div class="j neck"><div class="bone up" style="--l:22px"></div>
+                    <div class="j head">
+                      <div class="skull"></div>
+                      <i class="lm C s" style="--y:-14px;--z:14px" title="0 nose"></i>
+                      <i class="lm L s" style="--x:3px;--y:-19px;--z:12px" title="1 left eye inner"></i>
+                      <i class="lm L s" style="--x:6px;--y:-19.5px;--z:11px" title="2 left eye"></i>
+                      <i class="lm L s" style="--x:9px;--y:-19px;--z:9px" title="3 left eye outer"></i>
+                      <i class="lm R s" style="--x:-3px;--y:-19px;--z:12px" title="4 right eye inner"></i>
+                      <i class="lm R s" style="--x:-6px;--y:-19.5px;--z:11px" title="5 right eye"></i>
+                      <i class="lm R s" style="--x:-9px;--y:-19px;--z:9px" title="6 right eye outer"></i>
+                      <i class="lm L s" style="--x:13px;--y:-15px" title="7 left ear"></i>
+                      <i class="lm R s" style="--x:-13px;--y:-15px" title="8 right ear"></i>
+                      <i class="lm L s" style="--x:3.5px;--y:-8px;--z:12px" title="9 mouth left"></i>
+                      <i class="lm R s" style="--x:-3.5px;--y:-8px;--z:12px" title="10 mouth right"></i>
+                    </div>
+                  </div>
+
+                  <div class="j shL"><div class="bone" style="--l:58px"></div>
+                    <div class="j elL"><i class="lm L" title="13 left elbow"></i><div class="bone" style="--l:54px"></div>
+                      <div class="j wr"><i class="lm L" title="15 left wrist"></i><div class="bone hand" style="--l:12px"></div>
+                        <i class="lm L s" style="--x:4px;--y:14px;--z:-3px" title="17 left pinky"></i>
+                        <i class="lm L s" style="--x:-1px;--y:16px;--z:3px" title="19 left index"></i>
+                        <i class="lm L s" style="--x:-5px;--y:9px;--z:6px" title="21 left thumb"></i>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="j shR"><div class="bone" style="--l:58px"></div>
+                    <div class="j elR"><i class="lm R" title="14 right elbow"></i><div class="bone" style="--l:54px"></div>
+                      <div class="j wr"><i class="lm R" title="16 right wrist"></i><div class="bone hand" style="--l:12px"></div>
+                        <i class="lm R s" style="--x:-4px;--y:14px;--z:-3px" title="18 right pinky"></i>
+                        <i class="lm R s" style="--x:1px;--y:16px;--z:3px" title="20 right index"></i>
+                        <i class="lm R s" style="--x:5px;--y:9px;--z:6px" title="22 right thumb"></i>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="j hpL"><div class="bone" style="--l:86px"></div>
+                <div class="j knL"><i class="lm L" title="25 left knee"></i><div class="bone" style="--l:86px"></div>
+                  <div class="j anL"><i class="lm L" title="27 left ankle"></i>
+                    <div class="bone foot" style="--l:32px"></div>
+                    <i class="lm L s" style="--y:6px;--z:-8px" title="29 left heel"></i>
+                    <i class="lm L s" style="--y:6px;--z:24px" title="31 left foot index"></i>
+                  </div>
+                </div>
+              </div>
+
+              <div class="j hpR"><div class="bone" style="--l:86px"></div>
+                <div class="j knR"><i class="lm R" title="26 right knee"></i><div class="bone" style="--l:86px"></div>
+                  <div class="j anR"><i class="lm R" title="28 right ankle"></i>
+                    <div class="bone foot" style="--l:32px"></div>
+                    <i class="lm R s" style="--y:6px;--z:-8px" title="30 right heel"></i>
+                    <i class="lm R s" style="--y:6px;--z:24px" title="32 right foot index"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pose-tag" aria-hidden="true"><span class="pt-a">High Lunge</span><span class="pt-b">Pyramid Pose</span></div>
+      </div>
+      <figcaption>
+        <span class="legend"><i class="dot L"></i>left</span>
+        <span class="legend"><i class="dot R"></i>right</span>
+        <span class="legend"><i class="dot C"></i>centre</span>
+        <span class="hint">33 landmarks. Drag to rotate.</span>
+        <button class="chip-btn" id="motionToggle" type="button" aria-pressed="false">Pause motion</button>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================== DEMO ============================== -->
+<section class="section alt" id="demo">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="eyebrow">Live demo</p>
+      <h2>Running on an ordinary laptop webcam</h2>
+      <p class="sec-lede">The gesture-controlled interface: choose an asana and a hold time with your fingers, then match the reference stick figure. The timer runs only while the pose is held correctly, and the app returns to the menu for the next asana.</p>
+    </header>
+    <figure class="demo reveal" id="demoFig">
+      <video class="demo-video" controls preload="metadata" playsinline poster="media/demo-poster.jpg">
+        <source src="media/demo.mp4" type="video/mp4" onerror="document.getElementById('demoFig').classList.add('no-video')">
+        Your browser can't play this video. <a href="media/demo.mp4">Download it</a>.
+      </video>
+      <div class="video-missing" role="note">
+        <h3>Demo video not added yet</h3>
+        <p>Save the screen recording as <code>docs/media/demo.mp4</code> (H.264 MP4) and reload this page.</p>
+      </div>
+      <figcaption class="small muted">Gesture demo (<code>src/inference_gesture_select.py</code>), 1 min 52 s: Extended Side Angle Pose and High Lunge with 20&nbsp;s holds, the reference stick figure, the timer pausing when the pose breaks, and the return to the menu. Recorded on an Intel Core i5-8250U laptop webcam, CPU only.</figcaption>
+      <p class="hero-cta"><a class="btn primary" href="walkthrough.html">Open the 3D walkthrough: from dataset to live app</a></p>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================== ARCHITECTURE ============================== -->
+<section class="section" id="architecture">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="eyebrow">01 &middot; System architecture</p>
+      <h2>From webcam frame to posture-aware timer</h2>
+      <p class="sec-lede">Steps 1&ndash;4 produce a trained model: each webcam frame runs through MediaPipe Pose, the 33 landmarks become a 66-value vector of (x, y) offsets from the nose, and the <strong>BiLSTM-Attention</strong> classifier maps that skeleton to an asana. The live session then follows one straight path: show fingers to pick the asana, raise fingers again to pick the hold time, then hold the pose. The timer moves only while the model sees the chosen asana with confidence above 75%, and stops as soon as it doesn't.</p>
+    </header>
+
+    <div class="pipe-scene reveal">
+      <div class="pipe" id="pipe">
+        <p class="lane-label l1">Model ready &middot; runs on every frame</p>
+        <div class="node" style="--c:var(--c-vision)">
+          <span class="n-step">1</span>
+          <h3>Webcam</h3>
+          <p>RGB frame from <code>VideoCapture(0)</code>, mirrored</p>
+        </div>
+        <div class="wire h"><i></i><i></i><i></i></div>
+        <div class="node" style="--c:var(--c-vision)">
+          <span class="n-step">2</span>
+          <h3>MediaPipe Pose</h3>
+          <p>33 body landmarks; used only if wrists and ankles are visible</p>
+        </div>
+        <div class="wire h"><i></i><i></i><i></i></div>
+        <div class="node" style="--c:var(--c-feat)">
+          <span class="n-step">3</span>
+          <h3>66-d vector</h3>
+          <p>(x, y) of every landmark minus the nose (landmark 0)</p>
+        </div>
+        <div class="wire h"><i></i><i></i><i></i></div>
+        <div class="node" style="--c:var(--c-model)">
+          <span class="n-step">4</span>
+          <h3>BiLSTM-Attention</h3>
+          <p>Trained model: skeleton &rarr; asana + confidence</p>
+        </div>
+
+        <p class="lane-label l2">Live session &middot; uses the model from step 4</p>
+        <div class="node" style="--c:var(--c-hand)">
+          <span class="n-step">5</span>
+          <h3>Choose asana</h3>
+          <p>Show <em>N</em> fingers for 1.5&nbsp;s &rarr; asana <em>N</em></p>
+        </div>
+        <div class="wire h hand"><i></i><i></i><i></i></div>
+        <div class="node" style="--c:var(--c-hand)">
+          <span class="n-step">6</span>
+          <h3>Choose hold time</h3>
+          <p>Lower hand, raise 1&ndash;5 fingers &rarr; 10, 20, 30, 45 or 60&nbsp;s</p>
+        </div>
+        <div class="wire h"><i></i><i></i><i></i></div>
+        <div class="node" style="--c:var(--c-model)">
+          <span class="n-step">7</span>
+          <h3>Predict the pose</h3>
+          <p>Steps 1&ndash;4 on each frame: asana + confidence</p>
+        </div>
+        <div class="wire h"><i></i><i></i><i></i></div>
+        <div class="node" style="--c:var(--c-out)">
+          <span class="n-step">8</span>
+          <h3>Posture timer</h3>
+          <p><strong>Chosen asana and &gt; 75%</strong>: timer moves.<br>Otherwise: timer stops until the pose is right again.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cards3 reveal">
+      <article class="card">
+        <h3>Frame gating</h3>
+        <p>A frame is used only when <code>inFrame()</code> passes, meaning both wrists and both ankles have visibility &gt; 0.6. Otherwise the demos ask you to make sure your full body is visible, and the timer pauses.</p>
+      </article>
+      <article class="card">
+        <h3>Translation invariance</h3>
+        <p>Subtracting the nose position from every landmark removes where the person stands in the image. The BiLSTM notebook also divides by torso length, so the distance to the camera drops out too.</p>
+      </article>
+      <article class="card">
+        <h3>Confidence threshold</h3>
+        <p>All three live scripts accept a prediction only if its top softmax probability is above <code>0.75</code>. Lower-confidence frames count as <em>“wrong or not trained”</em>.</p>
+      </article>
+    </div>
+    <div class="lmap reveal">
+      <h3 class="sub">Step 2 up close: the 33 MediaPipe Pose landmarks</h3>
+      <p class="small">Hover over or tap any point to see its name, its position in the 66-value vector, and what the app uses it for. The figure faces the camera, so the person's right side is on the left of the image. Dashed rings mark the four joints <code>inFrame()</code> checks. Pick <strong>Torso length</strong> to see how the notebook scales every skeleton by the shoulder-to-hip distance.</p>
+      <div id="lm-viz"></div>
+      <noscript><p class="small">Enable JavaScript to explore the landmark map.</p></noscript>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== DATA PREPARATION ============================== -->
+<section class="section" id="data-prep">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="eyebrow">02 &middot; Data preparation</p>
+      <h2>From webcam stream to training skeletons</h2>
+      <p class="sec-lede">The dataset is recorded by <code>src/data_collection.py</code>, one asana at a time, and turned into model input in <code>notebooks/bilstm_attention.ipynb</code>. Every number below comes from those two files: 81 gated frames per asana, 324 frames in all, split in recording order and augmented on the training side only.</p>
+    </header>
+
+    <div class="dp-flow reveal">
+      <!-- Phase A: recording -->
+      <div class="dp-phase" aria-labelledby="dp-a-title">
+        <div class="dp-phase-head">
+          <span class="dp-tag">A</span>
+          <div>
+            <h3 id="dp-a-title">Record</h3>
+            <p><code>src/data_collection.py</code> &middot; run once per asana</p>
+          </div>
+        </div>
+        <ol class="dp-steps">
+          <li class="dp-step" style="--c: var(--c-hand)">
+            <span class="dp-n">1</span>
+            <div><h4>Name the asana</h4><p><code>input("Enter the name of the Asana : ")</code></p></div>
+          </li>
+          <li class="dp-step" style="--c: var(--c-vision)">
+            <span class="dp-n">2</span>
+            <div><h4>Read a webcam frame, mirrored</h4><p><code>cv2.VideoCapture(0)</code>, then <code>cv2.flip(frm, 1)</code></p></div>
+          </li>
+          <li class="dp-step" style="--c: var(--c-vision)">
+            <span class="dp-n">3</span>
+            <div><h4>MediaPipe Pose</h4><p>33 body landmarks, each with x, y and a visibility score</p></div>
+          </li>
+          <li class="dp-dec" style="--c: var(--warn)">
+            <div class="dp-q">
+              <span class="dp-diamond" aria-hidden="true"></span>
+              <div><h4><code>inFrame()</code>?</h4><p>Both wrists (15, 16) and both ankles (27, 28) have visibility &gt; 0.6</p></div>
+            </div>
+            <p class="dp-branch"><span class="dp-no">No</span> Frame is skipped and the window shows <em>&ldquo;Make Sure Full body visible&rdquo;</em>. Back to step 2.</p>
+            <p class="dp-yes">Yes</p>
+          </li>
+          <li class="dp-step" style="--c: var(--c-feat)">
+            <span class="dp-n">4</span>
+            <div><h4>66-value vector</h4><p>(x, y) of all 33 landmarks minus the nose (landmark 0), appended as one row</p></div>
+          </li>
+          <li class="dp-dec" style="--c: var(--warn)">
+            <div class="dp-q">
+              <span class="dp-diamond" aria-hidden="true"></span>
+              <div><h4>81 frames yet?</h4><p><code>data_size &gt; 80</code> (or Esc pressed)</p></div>
+            </div>
+            <p class="dp-branch"><span class="dp-no">No</span> Keep collecting. Back to step 2.</p>
+            <p class="dp-yes">Yes</p>
+          </li>
+          <li class="dp-step" style="--c: var(--c-out)">
+            <span class="dp-n">5</span>
+            <div><h4>Save one file per asana</h4><p><code>data/poses/&lt;name&gt;.npy</code>, shape <strong>(81, 66)</strong></p></div>
+          </li>
+        </ol>
+        <p class="dp-repeat"><span aria-hidden="true">&#8635;</span> Repeated for 4 asanas: <strong>4 files, 324 frames</strong>, one subject, one room.</p>
+      </div>
+
+      <div class="dp-link" aria-hidden="true"><span>4 &times; .npy</span><i></i></div>
+
+      <!-- Phase B: preparation -->
+      <div class="dp-phase" aria-labelledby="dp-b-title">
+        <div class="dp-phase-head">
+          <span class="dp-tag">B</span>
+          <div>
+            <h3 id="dp-b-title">Prepare</h3>
+            <p><code>notebooks/bilstm_attention.ipynb</code></p>
+          </div>
+        </div>
+        <ol class="dp-steps">
+          <li class="dp-step" style="--c: var(--c-out)">
+            <span class="dp-n">6</span>
+            <div><h4>Load and label</h4><p>All <code>*.npy</code> files in sorted order; the file name is the class name and its position is the label. 324 &times; 66.</p></div>
+          </li>
+          <li class="dp-step" style="--c: var(--c-feat)">
+            <span class="dp-n">7</span>
+            <div><h4>Skeleton + torso normalisation</h4><p><code>to_sequence()</code>: reshape to <strong>33 &times; 2</strong>, then divide by torso length (shoulder midpoint 11/12 to hip midpoint 23/24)</p></div>
+          </li>
+          <li class="dp-step" style="--c: var(--c-feat)">
+            <span class="dp-n">8</span>
+            <div>
+              <h4>Time-ordered split, per asana</h4>
+              <p>Frames stay in recording order, so near-identical neighbours don't leak into the test set.</p>
+              <div class="dp-split" role="img" aria-label="Per asana: first 60 percent train, 48 frames; next 15 percent validation, 12 frames; last 25 percent test, 21 frames">
+                <span class="dp-tr"><b>48</b>train<i> 60%</i></span>
+                <span class="dp-va"><b>12</b>val<i> 15%</i></span>
+                <span class="dp-te"><b>21</b>test<i> 25%</i></span>
+              </div>
+              <p class="dp-totals">Totals over 4 asanas: <strong>192</strong> train &middot; <strong>48</strong> val &middot; <strong>84</strong> test</p>
+            </div>
+          </li>
+          <li class="dp-step" style="--c: var(--c-feat)">
+            <span class="dp-n">9</span>
+            <div><h4>Augment the training set only</h4><p><code>augment()</code> keeps each original and adds 15 copies with rotation &plusmn;8&deg;, scale &plusmn;10% and joint jitter &sigma; &isin; [0.01, 0.15]. Validation and test stay untouched.</p>
+              <p class="dp-totals"><strong>192 &rarr; 3,072</strong> training skeletons (192 &times; 16), shape (3072, 33, 2)</p></div>
+          </li>
+          <li class="dp-step dp-end" style="--c: var(--c-model)">
+            <span class="dp-n">10</span>
+            <div><h4>Train the BiLSTM-Attention model</h4><p>3,072 train, 48 val; the 84 test frames are held out for evaluation. See <a href="#model">Main model</a>.</p></div>
+          </li>
+        </ol>
+        <p class="dp-side"><strong>Baseline path.</strong> <code>src/train_dense.py</code> reads the same <code>.npy</code> files as raw 66-value rows, with no torso normalisation, split or augmentation, shuffles them and trains a Dense 128&ndash;64 MLP for 80 epochs, saved as <code>models/model_001.h5</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== MODEL ============================== -->
+<section class="section alt" id="model">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="eyebrow">03 &middot; Main model</p>
+      <h2>BiLSTM-Attention over the skeleton</h2>
+      <p class="sec-lede">Given a single 66-value vector as one time step, an LSTM has nothing to recur over. The notebook instead reshapes each frame into a <strong>sequence of 33 joints &times; (x, y)</strong>. The BiLSTM reads the body joint by joint in both directions, and an additive attention layer learns which joints matter for each pose. This is the model proposed in the paper and the one behind every reported result; a Dense MLP is kept only as a baseline for comparison.</p>
+    </header>
+
+    <div class="model-grid">
+      <div class="stack-scene reveal" aria-hidden="true">
+        <div class="stack" id="stack">
+          <div class="plate p-in"   style="--i:0"><span class="badge">1</span></div>
+          <div class="plate p-emb"  style="--i:1"><span class="badge">2</span></div>
+          <div class="plate p-lstm" style="--i:2"><span class="badge">3</span></div>
+          <div class="plate p-att"  style="--i:3"><span class="badge">4</span></div>
+          <div class="plate p-den"  style="--i:4"><span class="badge">5</span></div>
+          <div class="plate p-out"  style="--i:5"><span class="badge">6</span></div>
+          <div class="spark"></div>
+        </div>
+      </div>
+
+      <div class="layer-list reveal">
+        <ol class="layers">
+          <li data-layer="0"><span class="ln">1</span><div><h4>Input <code>skeleton</code></h4><p>33 joints &times; 2, torso-normalised</p></div><span class="shape">(33, 2)</span><span class="params">0</span></li>
+          <li data-layer="1"><span class="ln">2</span><div><h4>Joint embedding</h4><p>Dense(32, ReLU), applied to each joint</p></div><span class="shape">(33, 32)</span><span class="params">96</span></li>
+          <li data-layer="2"><span class="ln">3</span><div><h4>BiLSTM(64)</h4><p>Bidirectional, <code>return_sequences=True</code>, then Dropout 0.3</p></div><span class="shape">(33, 128)</span><span class="params">49,664</span></li>
+          <li data-layer="3"><span class="ln">4</span><div><h4>Additive attention</h4><p>Bahdanau-style pooling over joints, 64 units</p></div><span class="shape">(128) + &alpha;(33)</span><span class="params">8,320</span></li>
+          <li data-layer="4"><span class="ln">5</span><div><h4>Dense(64, ReLU)</h4><p>on the context vector, then Dropout 0.3</p></div><span class="shape">(64)</span><span class="params">8,256</span></li>
+          <li data-layer="5"><span class="ln">6</span><div><h4>Softmax <code>pose</code></h4><p>One output per asana</p></div><span class="shape">(4)</span><span class="params">260</span></li>
+        </ol>
+        <p class="total">Total <strong>66,596</strong> trainable parameters (260 KB), from <code>model.summary()</code> in the notebook.</p>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <article class="card reveal">
+        <h3>Attention layer</h3>
+        <p>For BiLSTM outputs <code>h<sub>t</sub></code> (t = 1&hellip;33 joints):</p>
+<pre class="math"><code>score_t = vᵀ · tanh(W · h_t + b)
+α       = softmax(score)        # over the 33 joints
+context = Σ_t α_t · h_t          # (B, 128)</code></pre>
+        <p>The layer returns both <code>context</code> and <code>&alpha;</code>. A second Keras model (<code>attention_viewer</code>) shares the weights and outputs &alpha;, so you can inspect which joints the classifier relies on.</p>
+      </article>
+
+      <article class="card reveal">
+        <h3>Baseline for comparison: Dense MLP</h3>
+        <p>A plain multilayer perceptron on the raw 66-value vector, with no joint structure and no attention (<code>models/model_001.h5</code>, trained by <code>src/train_dense.py</code>):</p>
+        <div class="mini-net" aria-label="Dense baseline: 66 inputs, Dense 128 tanh, Dense 64 tanh, softmax">
+          <span style="--h:46%">66<small>input</small></span>
+          <span style="--h:92%">128<small>tanh</small></span>
+          <span style="--h:62%">64<small>tanh</small></span>
+          <span style="--h:22%" class="o">4<small>softmax</small></span>
+        </div>
+        <p class="small">The script trains on all of <code>data/poses/</code> (shuffled, no held-out split) with RMSprop and categorical cross-entropy for 80 epochs. The notebook retrains the same 128 &rarr; 64 &rarr; softmax shape with Adam on the augmented, time-split data so the two models can be compared fairly. That is about 17.1K parameters (my count from the layer sizes; the notebook does not print one).</p>
+      </article>
+    </div>
+
+    <div class="three-col">
+      <article class="card reveal">
+        <h3>Preprocessing</h3>
+        <p><code>to_sequence()</code> reshapes <code>(N, 66) &rarr; (N, 33, 2)</code> and divides every frame by its torso length, the distance from the shoulder midpoint (11, 12) to the hip midpoint (23, 24). This makes the features scale-invariant.</p>
+<pre><code>seq   = flat.reshape(N, 33, 2)
+torso = ‖mid(11,12) − mid(23,24)‖
+seq   = seq / max(torso, 1e-6)</code></pre>
+      </article>
+
+      <article class="card reveal">
+        <h3>Time-ordered split</h3>
+        <p>Neighbouring webcam frames are almost identical, so the frames of each pose are split in recording order:</p>
+        <div class="split" role="img" aria-label="Split per pose: first 60 percent train, next 15 percent validation, last 25 percent test">
+          <span class="s-tr" style="--w:60">train 60%</span><span class="s-va" style="--w:15">val 15%</span><span class="s-te" style="--w:25">test 25%</span>
+        </div>
+        <p class="small">That gives 192 / 48 / 84 frames (48 / 12 / 21 per pose) out of 324 (81 per pose). Test frames come from a later part of each recording.</p>
+      </article>
+
+      <article class="card reveal">
+        <h3>Training setup</h3>
+        <ul class="kv">
+          <li><span>Augmentation</span><span>15 copies per training frame (192 &rarr; 3,072): rotation &plusmn;8&deg;, scale &plusmn;10%, jitter &sigma; &isin; [0.01, 0.15]</span></li>
+          <li><span>Optimiser</span><span>Adam, lr 1e-3, sparse categorical cross-entropy</span></li>
+          <li><span>Schedule</span><span>100 epochs max, batch 32, EarlyStopping (patience 15), ReduceLROnPlateau (&times;0.5, patience 6)</span></li>
+          <li><span>Seed</span><span>42 (Python, NumPy, TensorFlow)</span></li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== RESULTS ============================== -->
+<section class="section" id="results">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="eyebrow">04 &middot; Results</p>
+      <h2>Accuracy under realistic webcam conditions</h2>
+      <p class="sec-lede">The held-out test frames (never the training set) are perturbed to simulate a live session. Results are averaged over 10 random draws (seeds 0&ndash;9), and the per-class report pools all 840 predictions.</p>
+    </header>
+
+    <div class="results-grid">
+      <div class="acc-card reveal">
+        <div class="acc-ring" style="--p:95">
+          <div><strong>95.0%</strong><span>&plusmn; 3.0%</span></div>
+        </div>
+        <p>Overall accuracy, BiLSTM-Attention<br><span class="muted">notebook output: 0.9500 &plusmn; 0.0295</span></p>
+      </div>
+
+      <div class="card reveal">
+        <h3>Perturbations</h3>
+        <ul class="perturb">
+          <li><span class="pk">Camera tilt</span><span>random rotation up to &plusmn;15&deg;</span></li>
+          <li><span class="pk">User distance / build</span><span>random scale &plusmn;20%</span></li>
+          <li><span class="pk">Landmark jitter</span><span>Gaussian noise &sigma; = 0.15 (torso-length units)</span></li>
+          <li><span class="pk">Occlusion</span><span>4 random joints per frame badly mislocated (&sigma; = 0.5)</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="table-wrap reveal">
+      <table class="data">
+        <caption>Per-pose results under perturbation (10 draws, 210 test frames per pose)</caption>
+        <thead><tr><th scope="col">Pose</th><th scope="col">Precision</th><th scope="col">Recall</th><th scope="col">F1-score</th><th scope="col" class="bar-col">F1</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Extended Side Angle</th><td>0.937</td><td>0.919</td><td>0.928</td><td class="bar-col"><span class="mbar" style="--v:.928"></span></td></tr>
+          <tr><th scope="row">High Lunge</th><td>0.900</td><td>0.938</td><td>0.918</td><td class="bar-col"><span class="mbar" style="--v:.918"></span></td></tr>
+          <tr><th scope="row">Low Lunge</th><td>1.000</td><td>0.967</td><td>0.983</td><td class="bar-col"><span class="mbar" style="--v:.983"></span></td></tr>
+          <tr><th scope="row">Pyramid</th><td>0.967</td><td>0.976</td><td>0.972</td><td class="bar-col"><span class="mbar" style="--v:.972"></span></td></tr>
+        </tbody>
+        <tfoot><tr><th scope="row">Overall accuracy</th><td colspan="3">95.0% &plusmn; 3.0%</td><td class="bar-col"></td></tr></tfoot>
+      </table>
+    </div>
+
+    <div class="callout warn reveal">
+      <h3>Read these numbers honestly</h3>
+      <ul>
+        <li><strong>Small, single-subject dataset.</strong> It has one person, one room, 81 frames per pose and four poses. High accuracy shows that these four poses can be separated. It does not show that the model generalises to new people, camera angles or more asanas.</li>
+        <li><strong>Perfect clean scores are optimistic.</strong> On the unperturbed held-out frames the model gets 84 out of 84 right (accuracy 1.0000). Those frames come from the same session and room as the training data, so the 95.0% figure under perturbation is the one to quote.</li>
+        <li><strong>Remaining errors</strong> are mostly confusions between High Lunge and Extended Side Angle, which share a similar leg stance.</li>
+      </ul>
+    </div>
+
+    <div class="attn-grid">
+      <div class="card reveal">
+        <h3>What the attention layer looks at</h3>
+        <p>Mean attention per joint on the test set, top 5 joints per pose (notebook output, ranked):</p>
+        <div class="pose-tabs" role="tablist" aria-label="Pose">
+          <button role="tab" type="button" class="tab" data-pose="0" aria-selected="true">Extended Side Angle</button>
+          <button role="tab" type="button" class="tab" data-pose="1" aria-selected="false">High Lunge</button>
+          <button role="tab" type="button" class="tab" data-pose="2" aria-selected="false">Low Lunge</button>
+          <button role="tab" type="button" class="tab" data-pose="3" aria-selected="false">Pyramid</button>
+        </div>
+        <ol class="topj" id="topJoints">
+          <li>R wrist</li><li>R elbow</li><li>R pinky</li><li>L wrist</li><li>L pinky</li>
+        </ol>
+        <p class="small" id="attnNote">Extended Side Angle: the model focuses on the wrists, elbows and hands, i.e. the extended arm.</p>
+        <p class="small muted">The highlight shows rank only, not the actual attention weights.</p>
+      </div>
+      <div class="attn-fig reveal">
+        <svg id="attnSvg" viewBox="0 0 200 300" role="img" aria-label="Front-view skeleton of the 33 MediaPipe landmarks with the top attended joints for the selected pose highlighted"></svg>
+      </div>
+    </div>
+
+    <details class="card reveal more">
+      <summary>Noise-sensitivity sweep (BiLSTM-Attention vs Dense baseline)</summary>
+      <p>Extra Gaussian noise is added to the clean test skeletons (torso-length units), averaged over 5 draws per level. Both models were trained on the same augmented data.</p>
+      <div class="table-wrap">
+        <table class="data compact">
+          <thead><tr><th scope="col">noise &sigma;</th><th scope="col">0.00</th><th scope="col">0.05</th><th scope="col">0.10</th><th scope="col">0.15</th><th scope="col">0.20</th><th scope="col">0.30</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">BiLSTM-Attention</th><td>1.0000</td><td>1.0000</td><td>1.0000</td><td>1.0000</td><td>1.0000</td><td>0.9381</td></tr>
+            <tr><th scope="row">Dense baseline</th><td>1.0000</td><td>1.0000</td><td>1.0000</td><td>1.0000</td><td>1.0000</td><td>1.0000</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">On this single-subject data, pure landmark noise does not separate the two architectures, and the Dense MLP even holds up better at &sigma; = 0.30. The headline 95.0% figure is for the BiLSTM-Attention model under the combined perturbations above. The notebook does not report a Dense baseline figure for that test.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ============================== PERFORMANCE ============================== -->
+<section class="section alt" id="performance">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="eyebrow">05 &middot; Inference performance</p>
+      <h2>Latency per stage and throughput</h2>
+      <p class="sec-lede">Measured by <code>src/benchmark_inference.py</code>, which writes <code>docs/benchmark_results.js</code>. The headline figures are for the BiLSTM-Attention model called as a compiled <code>tf.function</code>. The Dense baseline and Keras <code>model.predict()</code> paths are listed for comparison.</p>
+    </header>
+    <div id="bench" class="bench reveal" aria-live="polite">
+      <div class="placeholder">
+        <h3>No benchmark data yet</h3>
+        <p>Run the benchmark from the repository root, then reload this page:</p>
+        <pre><code>python src/benchmark_inference.py</code></pre>
+        <p class="small muted">It writes <code>docs/benchmark_results.js</code>, which defines <code>window.BENCHMARK</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SETUP ============================== -->
+<section class="section" id="setup">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="eyebrow">06 &middot; Setup and usage</p>
+      <h2>Run it locally</h2>
+      <p class="sec-lede">You need Python 3.11, a webcam and room to stand with your whole body in view, from wrists to ankles. The code uses MediaPipe's legacy <code>mp.solutions</code> API (Pose, Hands, drawing utils); newer MediaPipe releases have removed it, so install the pinned versions.</p>
+    </header>
+
+    <div class="two-col">
+      <article class="card reveal">
+        <h3>1. Open a terminal in the repository folder</h3>
+<pre><code>cd Flowing-Asanas-ICERCS2024</code></pre>
+        <h3>2. Create and activate a virtual environment</h3>
+<pre><code><span class="c"># Windows (PowerShell)</span>
+py -3.11 -m venv .venv
+.venv\Scripts\Activate.ps1
+<span class="c"># if activation is blocked, run once:</span>
+<span class="c"># Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</span>
+
+<span class="c"># Linux / macOS</span>
+python3.11 -m venv .venv
+source .venv/bin/activate</code></pre>
+        <h3>3. Install dependencies</h3>
+<pre><code>python -m pip install --upgrade pip
+pip install -r requirements.txt</code></pre>
+        <p class="small">The download is about 1 GB, mostly TensorFlow, and takes a few minutes.</p>
+        <h3>4. Check the install</h3>
+<pre><code>python -c "import tensorflow as tf, mediapipe as mp; print(tf.__version__, mp.__version__, mp.solutions.pose.Pose)"</code></pre>
+        <p class="small">It should print <code>2.15.1 0.10.14</code> and a <code>Pose</code> class.</p>
+        <h3>5. Run a demo</h3>
+<pre><code>python src/inference_timer.py</code></pre>
+        <p class="small">Stand back until your wrists and ankles are in frame, hold a trained asana and watch the timer. Press <kbd>Esc</kbd> to quit. The other scripts are listed under Commands below.</p>
+        <h3>6. Measure inference time (optional)</h3>
+<pre><code>python src/benchmark_inference.py --source webcam</code></pre>
+        <p class="small">Prints per-stage latency and FPS, and updates <code>docs/benchmark_results.js</code>. Reload this page to see the new numbers. Without <code>--source</code> it uses synthetic frames. For stable numbers, close other programs and plug the laptop in.</p>
+        <h3>7. Open this documentation</h3>
+<pre><code><span class="c"># Windows</span>
+start docs\index.html
+<span class="c"># macOS: open docs/index.html   |   Linux: xdg-open docs/index.html</span></code></pre>
+      </article>
+
+      <article class="card reveal">
+        <h3>Environment</h3>
+        <div class="table-wrap">
+          <table class="data compact env">
+            <thead><tr><th scope="col">Package</th><th scope="col"><code>requirements.txt</code> (working)</th><th scope="col">Original pin</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Python</th><td>3.11</td><td>3.8&ndash;3.10</td></tr>
+              <tr><th scope="row">tensorflow</th><td>2.15.1</td><td>2.11.0</td></tr>
+              <tr><th scope="row">keras</th><td>2.15.0</td><td>2.11.0</td></tr>
+              <tr><th scope="row">mediapipe</th><td>0.10.14</td><td>0.9.0.1 <span class="tag">not on PyPI</span></td></tr>
+              <tr><th scope="row">opencv-python</th><td>4.9.0.80</td><td>4.9.0.80</td></tr>
+              <tr><th scope="row">numpy</th><td>&ge;1.26, &lt; 2</td><td>&ge;1.21, &lt;1.24</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small">The original pin <code>mediapipe==0.9.0.1</code> is no longer on PyPI, so <code>requirements.txt</code> has been updated to the working set. All scripts, both models and the notebook have been run with it on Windows. MediaPipe also installs <code>opencv-contrib-python</code>, so <code>cv2.__version__</code> may report 4.11; that is expected.</p>
+        <h3>Troubleshooting</h3>
+        <ul class="small">
+          <li><strong>“Could not read a frame from the webcam”</strong>: another app (Zoom, Teams, the Camera app) is using the camera, or camera access is turned off in Windows Privacy settings.</li>
+          <li><strong>Nothing is predicted</strong>: the script only classifies when both wrists and both ankles are visible. Step back from the camera.</li>
+          <li><strong><code>No module named tensorflow</code></strong>: the virtual environment isn't active. Run the activate command from step 2 again.</li>
+          <li><strong>Loading <code>bilstm_attention.keras</code> fails</strong> with “Cannot deserialize object of type Attention”: define the notebook's <code>Attention</code> class before calling <code>load_model</code>.</li>
+        </ul>
+      </article>
+    </div>
+
+    <h3 class="sub reveal">Commands</h3>
+    <p class="reveal">Run everything from the repository root. The live scripts need a webcam. Press <kbd>Esc</kbd> to quit.</p>
+    <div class="table-wrap reveal">
+      <table class="data cmds">
+        <thead><tr><th scope="col">Step</th><th scope="col">Command</th><th scope="col">What it does</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Collect data</th><td><code>python src/data_collection.py</code></td><td>Asks for an asana name, then records landmark vectors while your full body is visible. Stops after 81 frames and saves <code>data/poses/&lt;name&gt;.npy</code>.</td></tr>
+          <tr><th scope="row">Train main model (BiLSTM-Attention)</th><td><code>jupyter notebook notebooks/bilstm_attention.ipynb</code></td><td>Run all cells: preprocessing, split, augmentation, training, evaluation, attention maps. Saves <code>models/bilstm_attention.keras</code> and its labels, <strong>overwriting the published model</strong>. Back it up first.</td></tr>
+          <tr><th scope="row">Train baseline (Dense)</th><td><code>python src/train_dense.py</code></td><td>Trains the comparison MLP on every <code>.npy</code> in <code>data/poses/</code>. Writes <code>models/model_001.h5</code> and <code>models/labels_001.npy</code>.</td></tr>
+          <tr><th scope="row">Classify</th><td><code>python src/inference_basic.py</code></td><td>Shows the predicted asana live, or <em>“wrong or not trained”</em> when confidence is 0.75 or less.</td></tr>
+          <tr><th scope="row">Timer demo</th><td><code>python src/inference_timer.py</code></td><td>Classifies the pose and runs an MM:SS hold timer that pauses whenever the posture is wrong.</td></tr>
+          <tr><th scope="row">Gesture demo</th><td><code>python src/inference_gesture_select.py</code></td><td>Raise <em>N</em> fingers to pick asana <em>N</em>, then raise fingers again to set the hold time. Press <kbd>B</kbd> or hold up both hands to go back a step.</td></tr>
+          <tr><th scope="row">Benchmark</th><td><code>python src/benchmark_inference.py</code></td><td>Measures per-stage inference latency and throughput and writes <code>docs/benchmark_results.js</code> for the <a href="#performance">Performance</a> section.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="two-col">
+      <article class="card reveal">
+        <h3>Gesture controls</h3>
+        <ol class="steps">
+          <li><strong>Pick the asana.</strong> The panel on the right lists the trained asanas with a number beside each. Show that many fingers on one hand and hold them still for 1.5&nbsp;s; a progress bar fills as you hold. Or press <kbd>1</kbd>&ndash;<kbd>4</kbd>. The panel then switches to the asana's English and Sanskrit names and a <strong>reference stick figure</strong> of the target pose. The figure is drawn from the median of each of the 33 landmarks over that asana's recorded frames in <code>data/poses/</code>, with left limbs in blue and right limbs in orange.</li>
+          <li><strong>Set the hold time.</strong> Lower your hand first, so the asana gesture is not read again. Then show 1&ndash;5 fingers for 10, 20, 30, 45 or 60&nbsp;s and hold them still, or press <kbd>1</kbd>&ndash;<kbd>5</kbd>.</li>
+          <li><strong>Countdown.</strong> A 5-second &ldquo;Starting in&rdquo; countdown runs, then the timer starts. It counts only while you hold the chosen asana with confidence &gt; 0.75, and pauses and resumes when you break and recover the pose. After &ldquo;Asana Completed!&rdquo; a 3-second countdown returns you to step&nbsp;1 to choose the next asana.</li>
+          <li><strong>Go back.</strong> Chose the wrong asana or hold time? Press <kbd>B</kbd> (or <kbd>Backspace</kbd>), or hold up <em>both</em> hands for 1.5&nbsp;s. From the hold-time step this returns to the asana menu; from the countdown or while posing it returns to the hold-time step, and pressing Back again reaches the menu. While posing, the two-hands gesture only works when you step closer so your full body is out of frame, so arms raised in a pose such as High Lunge can't trigger it. The timer resets when you go back.</li>
+        </ol>
+        <p class="small">Finger counting uses the first detected hand. Each of the index, middle, ring and little fingers counts if its tip (8, 12, 16, 20) is above its base joint (5, 9, 13, 17). The thumb counts if its tip (4) is left of the wrist (0) in image x. One hand therefore gives 0 to 5. The screen shows the live finger count, so you can see what the camera reads.</p>
+      </article>
+      <article class="card reveal">
+        <h3>Timer behaviour</h3>
+        <div class="timer-demo" aria-hidden="true">
+          <div class="td-track"><span class="td-run r1"></span><span class="td-pause"></span><span class="td-run r2"></span></div>
+          <div class="td-legend"><span><i class="ok"></i>pose correct, conf &gt; 0.75</span><span><i class="bad"></i>wrong pose / body not visible</span></div>
+        </div>
+        <ul class="kv">
+          <li><span><code>inference_timer.py</code></span><span>The timer accumulates time while the predicted pose is a trained asana with confidence &gt; 0.75. It <strong>pauses</strong> when the pose is wrong or the body leaves the frame and <strong>resumes</strong> on the same total. At 2:00 it shows “2 minutes complete!” and resets.</span></li>
+          <li><span><code>inference_gesture_select.py</code></span><span>Counts up to the chosen hold time only while the prediction equals the <em>chosen</em> asana with confidence &gt; 0.75, then shows “Asana Completed!”. A broken posture shows “Perform the asana correctly” and <strong>pauses</strong> the timer; it <strong>resumes</strong> from the time already held once the pose is correct again.</span></li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== LIMITATIONS ============================== -->
+<section class="section alt" id="limitations">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="eyebrow">07 &middot; Limitations and next steps</p>
+      <h2>What this does and doesn't show</h2>
+    </header>
+    <div class="two-col">
+      <article class="card reveal">
+        <h3>Limitations</h3>
+        <ul class="bullets">
+          <li>The dataset is small and self-collected: one subject, one environment, 81 frames per pose, four poses.</li>
+          <li>Perfect clean-test scores show the four poses are easy to separate. They don't show generalisation to new people, camera angles or more asanas.</li>
+          <li>The BiLSTM runs over the <em>33 joints of a single frame</em>, not over time. Each prediction is independent of earlier frames.</li>
+          <li>The live demo scripts, and the demo video, currently load the Dense baseline checkpoint (<code>models/model_001.h5</code>), not the BiLSTM-Attention model (<code>models/bilstm_attention.keras</code>). All reported accuracy figures are for BiLSTM-Attention.</li>
+        </ul>
+      </article>
+      <article class="card reveal">
+        <h3>Next steps</h3>
+        <ul class="bullets next">
+          <li>Run BiLSTM-Attention in the live demos (about 8&nbsp;ms per frame as a compiled <code>tf.function</code> in the benchmark)</li>
+          <li>More asanas and more subjects</li>
+          <li>Joint-angle features</li>
+          <li>Per-joint corrective feedback</li>
+          <li>Sequence models over windows of frames (temporal modelling)</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== CITE ============================== -->
+<section class="section" id="cite">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="eyebrow">08 &middot; Citation</p>
+      <h2>Cite this work</h2>
+    </header>
+    <div class="code-card reveal">
+      <div class="code-head"><span>BibTeX</span><button class="chip-btn" id="copyBib" type="button">Copy</button></div>
+<pre id="bibtex"><code>@inproceedings{robert2024flowingasanas,
+  title     = {Flowing Asanas: Enhancing Yoga Posture Detection with BiLSTM Attention and MediaPipe},
+  author    = Robert V Noel Jeygar , P. Aakash kumar, Abha Rani, Shraddha Pandey
+  booktitle = {2024 International Conference on Emerging Research in Computational Science (ICERCS)},
+  year      = {2024},
+  publisher = {IEEE}
+}</code></pre>
+
+
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <p>Flowing Asanas &middot; ICERCS 2024 &middot; School of Computer Science and Engineering, VIT Chennai</p>
+    <p><a href="#hero">Back to top</a></p>
+  </div>
+</footer>
+
+<script src="benchmark_results.js"></script>
+<script src="app.js"></script>
+<script src="landmarks.js"></script>
+</body>
+</html>

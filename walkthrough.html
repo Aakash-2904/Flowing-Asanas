@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flowing Asanas in 3D</title>
+<meta name="description" content="Interactive 3D walkthrough of Flowing Asanas: recording the dataset with MediaPipe Pose, preprocessing, training the BiLSTM-Attention model, testing it, and using it in the live app.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e16;--panel:rgba(14,20,32,0.92);--ink:#e6ecf5;--muted:#93a1b8;--line:rgba(148,170,210,0.18);
+  --accent:#5eead4;--accent-ink:#062a26;--accent-bg:rgba(94,234,212,0.12);--code:#070a10;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --head:"Space Grotesk","Inter",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --bg:#eef1f6;--panel:rgba(255,255,255,0.94);--ink:#0f172a;--muted:#475569;--line:rgba(30,41,59,0.14);
+    --accent:#0d9488;--accent-ink:#ffffff;--accent-bg:rgba(13,148,136,0.1);--code:#f3f5f9;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#eef1f6;--panel:rgba(255,255,255,0.94);--ink:#0f172a;--muted:#475569;--line:rgba(30,41,59,0.14);
+  --accent:#0d9488;--accent-ink:#ffffff;--accent-bg:rgba(13,148,136,0.1);--code:#f3f5f9;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;overflow:hidden}
+#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hud{position:fixed;top:calc(env(safe-area-inset-top,0px) + 16px);left:16px;right:16px;display:flex;justify-content:space-between;gap:12px;pointer-events:none}
+.hud h1{margin:0;font-family:var(--head);font-size:20px;font-weight:600;letter-spacing:-0.01em}
+.hud p{margin:2px 0 0;color:var(--muted);font-size:14px}
+.hud a{pointer-events:auto;align-self:flex-start;color:var(--accent);text-decoration:none;font-size:14px;border:1px solid var(--line);
+  background:var(--panel);border-radius:999px;padding:5px 12px;white-space:nowrap}
+.panel{position:fixed;left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);width:min(470px,calc(100% - 32px));
+  max-height:min(62vh,660px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:16px 18px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.chip{background:var(--accent-bg);color:var(--accent);border-radius:999px;padding:1px 10px;font-weight:500}
+.panel h2{margin:6px 0;font-family:var(--head);font-size:19px;font-weight:600;letter-spacing:-0.01em;line-height:1.3}
+.panel p.body{margin:0 0 10px}
+.panel p.note{margin:0 0 10px;font-size:13px;color:var(--muted);border-left:3px solid var(--accent);padding-left:10px}
+pre{margin:0 0 10px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+  font-family:var(--mono);font-size:12.5px;line-height:1.55;overflow-x:auto;white-space:pre}
+.controls{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
+.controls button.b{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:14px}
+.controls button.b:disabled{opacity:.4;cursor:default}
+.controls button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:500}
+.dots{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.dots button{width:12px;height:12px;border-radius:50%;border:1px solid var(--muted);background:none;padding:0}
+.dots button[aria-current="true"]{background:var(--accent);border-color:var(--accent)}
+.fail{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--muted)}
+@media (max-width:640px){
+  .hud h1{font-size:17px}.hud p{display:none}
+  .panel{max-height:46vh;padding:14px}
+  .panel h2{font-size:17px}
+}
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="3D scene showing a yoga pose being recorded with MediaPipe, turned into a dataset, used to train a BiLSTM-Attention model, and used live"></canvas>
+<div class="hud">
+  <div><h1>Flowing Asanas, end to end</h1><p>From a webcam recording to a posture-aware timer</p></div>
+  <a href="index.html">&larr; Documentation</a>
+</div>
+<section class="panel" aria-live="polite">
+  <div class="meta"><span id="count"></span><span class="chip" id="where"></span><span id="file"></span></div>
+  <h2 id="ttl"></h2>
+  <p class="body" id="body"></p>
+  <div id="extra"></div>
+  <div class="controls">
+    <button class="b" id="prev" aria-label="Previous stage">Back</button>
+    <button class="b primary" id="play">Pause</button>
+    <button class="b" id="next" aria-label="Next stage">Next</button>
+    <div class="dots" id="dots" role="group" aria-label="Jump to stage"></div>
+  </div>
+</section>
+<div class="fail" id="fail">The 3D view couldn't load in this browser. Try a recent version of Chrome, Edge, Safari or Firefox, and check you are online (three.js loads from a CDN).</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+if(typeof THREE==="undefined"){document.getElementById("fail").style.display="flex";return;}
+
+/* Median of each landmark over the 81 recorded frames per asana (data/poses/*.npy), scaled so the
+   torso (shoulder midpoint to hip midpoint) is 0.52 m, hips centred on x = 0, lowest point on the floor. */
+const POSES={"extended side angle pose":[[0.649,1.087],[0.686,1.068],[0.684,1.055],[0.682,1.043],[0.692,1.112],[0.693,1.13],[0.693,1.147],[0.666,1.037],[0.691,1.19],[0.604,1.075],[0.609,1.12],[0.498,0.946],[0.504,1.342],[0.469,0.658],[0.423,1.609],[0.468,0.38],[0.354,1.886],[0.487,0.306],[0.344,1.954],[0.492,0.292],[0.343,1.948],[0.468,0.322],[0.34,1.919],[0.095,0.949],[-0.095,1.061],[0.433,0.71],[-0.354,0.628],[0.425,0.298],[-0.624,0.199],[0.356,0.227],[-0.645,0.186],[0.519,0.17],[-0.625,0.0]],"high lunge":[[0.13,1.102],[0.145,1.132],[0.152,1.129],[0.159,1.127],[0.118,1.138],[0.107,1.14],[0.093,1.142],[0.149,1.112],[0.064,1.136],[0.133,1.066],[0.105,1.074],[0.135,0.972],[-0.063,1.058],[0.267,1.175],[-0.111,1.311],[0.33,1.42],[-0.015,1.543],[0.334,1.466],[0.004,1.595],[0.318,1.479],[0.028,1.594],[0.312,1.463],[0.025,1.573],[0.076,0.508],[-0.076,0.485],[0.428,0.448],[-0.24,0.101],[0.271,0.108],[-0.702,0.117],[0.209,0.075],[-0.758,0.162],[0.359,0.0],[-0.787,0.031]],"low lunge":[[0.027,1.179],[0.057,1.212],[0.07,1.21],[0.083,1.208],[0.011,1.215],[-0.005,1.216],[-0.019,1.216],[0.105,1.189],[-0.034,1.202],[0.049,1.135],[-0.004,1.139],[0.198,0.976],[-0.154,1.006],[0.288,0.774],[-0.359,0.812],[0.211,0.651],[-0.22,0.598],[0.203,0.606],[-0.173,0.563],[0.179,0.633],[-0.155,0.59],[0.171,0.649],[-0.166,0.603],[0.09,0.49],[-0.09,0.452],[0.441,0.427],[-0.084,0.023],[0.269,0.105],[-0.418,0.15],[0.203,0.057],[-0.457,0.179],[0.418,0.0],[-0.463,0.018]],"pyramid pose":[[0.031,2.101],[0.09,2.176],[0.12,2.18],[0.146,2.184],[-0.013,2.182],[-0.046,2.19],[-0.071,2.199],[0.198,2.212],[-0.106,2.223],[0.078,2.045],[-0.02,2.05],[0.36,2.085],[-0.303,2.085],[0.805,2.015],[-0.767,1.944],[0.466,1.707],[-0.436,1.711],[0.393,1.613],[-0.368,1.638],[0.343,1.646],[-0.332,1.675],[0.35,1.677],[-0.34,1.705],[0.192,1.559],[-0.192,1.572],[0.15,0.933],[-0.15,0.969],[0.17,0.203],[-0.155,0.237],[0.143,0.131],[-0.141,0.166],[0.171,0.035],[-0.127,0.0]]};
+const KEYS=["extended side angle pose","high lunge","low lunge","pyramid pose"];
+const NAMES=["Extended Side Angle Pose","High Lunge","Low Lunge","Pyramid Pose"];
+const FILES=["01_extended side angle pose.npy","02_high lunge.npy","03_low lunge.npy","04_pyramid pose.npy"];
+/* Top-5 attended joints per pose (notebook output, ranked) */
+const JI={"L wrist":15,"R wrist":16,"L elbow":13,"R elbow":14,"L pinky":17,"R pinky":18,"L ankle":27,"R ankle":28,"L heel":29,"R heel":30,"L foot":31,"R foot":32};
+const ATTN=[["R wrist","R elbow","R pinky","L wrist","L pinky"],["L heel","R ankle","R heel","L foot","L ankle"],
+            ["R heel","L heel","L foot","R foot","R ankle"],["R heel","L heel","L foot","R ankle","R foot"]];
+const CONN=[[0,1],[0,4],[1,2],[2,3],[3,7],[4,5],[5,6],[6,8],[9,10],[11,12],[11,13],[11,23],[12,14],[12,24],[13,15],[14,16],[15,17],[15,19],[15,21],[16,18],[16,20],[16,22],[17,19],[18,20],[23,24],[23,25],[24,26],[25,27],[26,28],[27,29],[27,31],[28,30],[28,32],[29,31],[30,32]];
+const BODY=CONN.filter(([i,j])=>!(i<=10&&j<=10));
+const SCALE=0.8;
+
+const SANS="'Inter', system-ui, sans-serif",HEAD="'Space Grotesk', 'Inter', sans-serif",MONO="'JetBrains Mono', ui-monospace, monospace";
+const COL={left:0x60a5fa,right:0xfb923c,center:0xe6ecf5,joint:0xfacc15,feat:0xa78bfa,model:0x5eead4,out:0xfacc15,hand:0xfb923c,bad:0xf87171};
+const isDark=()=>{const t=document.documentElement.dataset.theme;if(t==="dark")return true;if(t==="light")return false;return !matchMedia("(prefers-color-scheme: light)").matches;};
+
+/* ---------- renderer ---------- */
+const canvas=document.getElementById("scene");
+let renderer;
+try{renderer=new THREE.WebGLRenderer({canvas,antialias:true});}catch(e){document.getElementById("fail").style.display="flex";return;}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+renderer.outputEncoding=THREE.sRGBEncoding;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(42,1,0.1,250);
+const hemi=new THREE.HemisphereLight(0xffffff,0x334155,0.7);scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xffffff,0.95);sun.position.set(30,26,20);sun.target.position.set(22,0,0);scene.add(sun,sun.target);
+sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-32,right:32,top:16,bottom:-16,near:1,far:90});sun.shadow.bias=-0.0006;
+const rim=new THREE.DirectionalLight(0xbfdcff,0.4);rim.position.set(10,10,-18);scene.add(rim);
+
+const M=(c,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:0.6,metalness:0.05},o||{}));
+const P=(x,y,z)=>new THREE.Vector3(x,y,z);
+const ease=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
+const seg=(t,a,b)=>ease((t-a)/(b-a));
+const lerp=(a,b,k)=>a+(b-a)*k;
+function rr(x,X,Y,w,h,r){x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+w,Y,X+w,Y+h,r);x.arcTo(X+w,Y+h,X,Y+h,r);x.arcTo(X,Y+h,X,Y,r);x.arcTo(X,Y,X+w,Y,r);x.closePath();}
+function makeCanvas(w,h){const c=document.createElement("canvas");c.width=w;c.height=h;const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;t.anisotropy=renderer.capabilities.getMaxAnisotropy();
+  return {c,t,w,h,ctx:c.getContext("2d"),draw(fn){this.ctx.clearRect(0,0,w,h);fn(this.ctx,w,h);this.t.needsUpdate=true;}};}
+let rngSeed=7;const rnd=()=>{rngSeed=(rngSeed*16807)%2147483647;return (rngSeed-1)/2147483646;};
+const gauss=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+
+/* ---------- labels (theme aware) ---------- */
+const sprites=[];
+function label(text,sub,width,accent){
+  const h=sub?150:96;const cv=makeCanvas(600,h);
+  const fn=(x,w,H)=>{const d=isDark();x.fillStyle=d?"rgba(14,20,32,0.94)":"rgba(255,255,255,0.96)";rr(x,4,4,w-8,H-8,22);x.fill();
+    x.strokeStyle=accent||(d?"rgba(148,170,210,0.35)":"rgba(30,41,59,0.2)");x.lineWidth=accent?4:2;x.stroke();
+    x.textAlign="center";x.textBaseline="middle";x.fillStyle=d?"#e6ecf5":"#0f172a";x.font=`600 40px ${HEAD}`;x.fillText(text,w/2,sub?54:H/2);
+    if(sub){x.fillStyle=d?"#93a1b8":"#475569";x.font=`400 29px ${SANS}`;x.fillText(sub,w/2,106);}};
+  cv.draw(fn);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:cv.t,transparent:true,depthWrite:false}));
+  const W=width||2.6;s.scale.set(W,W*h/600,1);s.userData.redraw=()=>cv.draw(fn);sprites.push(s);return s;
+}
+function textSprite(w,h,width){const cv=makeCanvas(w,h);const s=new THREE.Sprite(new THREE.SpriteMaterial({map:cv.t,transparent:true,depthWrite:false}));
+  s.scale.set(width,width*h/w,1);s.userData.cv=cv;s.userData.last=null;
+  s.userData.set=(key,fn)=>{if(s.userData.last===key)return;s.userData.last=key;cv.draw(fn);};sprites.push(s);return s;}
+function pill(s,txt,fg,bg){s.userData.set(txt+fg+bg+isDark(),(x,w,h)=>{x.fillStyle=bg;rr(x,4,4,w-8,h-8,(h-8)/2);x.fill();
+  x.fillStyle=fg;x.font=`600 ${Math.round(h*0.42)}px ${SANS}`;x.textAlign="center";x.textBaseline="middle";x.fillText(txt,w/2,h/2+1);});}
+
+/* ---------- skeleton built from 33 landmarks ---------- */
+const UP=P(0,1,0),tmpV=P(0,0,0);
+const zOff=i=>i<11?0.04:(i%2?0.09:-0.09);          // MediaPipe: odd = left side, even = right side
+const sideColor=(i,j)=>(i>=11&&j>=11&&i%2===j%2)?(i%2?COL.left:COL.right):COL.center;
+function posePts(key,scale){const s=(scale||1)*SCALE;return POSES[key].map(([x,y],i)=>P(x*s,y*s,zOff(i)));}
+function lerpPts(a,b,k){return a.map((p,i)=>p.clone().lerp(b[i],k));}
+function placeBone(m,a,b){tmpV.subVectors(b,a);const L=tmpV.length();m.position.copy(a).addScaledVector(tmpV,0.5);
+  if(L>1e-6)m.quaternion.setFromUnitVectors(UP,tmpV.divideScalar(L));m.scale.set(1,Math.max(L,1e-4),1);}
+const boneGeo=new THREE.CylinderGeometry(1,1,1,10);
+function Skeleton(o){
+  o=o||{};const g=new THREE.Group();const jr=o.jr||0.042,br=o.br||0.02;
+  const J=[];for(let i=0;i<33;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(i<11?jr*0.55:jr,16,12),M(COL.joint,{emissive:COL.joint,emissiveIntensity:0.55,roughness:0.35}));g.add(m);J.push(m);}
+  const B=BODY.map(([i,j])=>{const m=new THREE.Mesh(boneGeo,M(sideColor(i,j),{emissive:sideColor(i,j),emissiveIntensity:0.18,roughness:0.45}));m.scale.x=m.scale.z=br;
+    const bone={m,i,j};m.userData.r=br;g.add(m);return bone;});
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.1,24,16),M(0xe6ecf5,{transparent:true,opacity:0.22,roughness:0.3}));g.add(head);
+  g.userData={J,B,head,pts:null};
+  g.set=function(pts){this.userData.pts=pts;J.forEach((m,i)=>m.position.copy(pts[i]));
+    B.forEach(b=>{placeBone(b.m,pts[b.i],pts[b.j]);b.m.scale.x=b.m.scale.z=b.m.userData.r;});
+    const c=P(0,0,0);for(let i=0;i<=10;i++)c.add(pts[i]);head.position.copy(c.multiplyScalar(1/11));};
+  g.highlight=function(map){J.forEach((m,i)=>{const k=map&&map[i];m.scale.setScalar(k?k:1);m.material.emissive.set(k?0x5eead4:COL.joint).convertSRGBToLinear();m.material.color.set(k?0x5eead4:COL.joint).convertSRGBToLinear();m.material.emissiveIntensity=k?1.1:0.55;});};
+  g.set(o.pts||posePts("pyramid pose"));
+  return g;
+}
+/* light-weight line skeleton (for augmentation copies) */
+function LineSkel(color,opacity){const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.BufferAttribute(new Float32Array(BODY.length*6),3));
+  const l=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color,transparent:true,opacity}));
+  l.set=pts=>{const a=geo.attributes.position.array;BODY.forEach(([i,j],k)=>{a.set([pts[i].x,pts[i].y,pts[i].z,pts[j].x,pts[j].y,pts[j].z],k*6);});geo.attributes.position.needsUpdate=true;geo.computeBoundingSphere();};
+  return l;}
+
+/* ---------- world ---------- */
+const floorMat=M(0x111827,{roughness:1});
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(120,50),floorMat);floor.rotation.x=-Math.PI/2;floor.position.set(22,0,0);scene.add(floor);
+const railMat=new THREE.MeshBasicMaterial({color:0x5eead4,transparent:true,opacity:0.45});
+const rail=new THREE.Mesh(new THREE.PlaneGeometry(48,0.1),railMat);rail.rotation.x=-Math.PI/2;rail.position.set(22,0.012,2.3);scene.add(rail);
+const zones=[];function zone(x,w,color){const m=new THREE.Mesh(new THREE.PlaneGeometry(w,5.6),new THREE.MeshBasicMaterial({color,transparent:true,opacity:0.16}));m.rotation.x=-Math.PI/2;m.position.set(x,0.006,0);scene.add(m);zones.push(m);}
+const SX={rec:0,vec:5.6,data:12.2,pre:18.2,split:22.8,model:28.2,attn:34.4,test:39.2,live:45.0};
+zone(0.3,5.4,0x60a5fa);zone(5.6,5.2,0xa78bfa);zone(12.2,6.4,0xa78bfa);zone(18.2,4.2,0x5eead4);zone(22.8,4.4,0x5eead4);zone(29.3,5.8,0x2dd4bf);zone(34.4,3.0,0x2dd4bf);zone(39.2,4.2,0xfacc15);zone(45.4,6.6,0xfb923c);
+function stationTag(text,sub,x,y,z){const s=label(text,sub,2.6);s.position.set(x,y,z);scene.add(s);return s;}
+stationTag("1 · Record","data_collection.py",0,3.0,-1.4);
+stationTag("2 · 66 numbers","x, y offsets from the nose",5.6,3.0,-1.4);
+stationTag("3 · Dataset","data/poses/*.npy",12.2,3.0,-1.4);
+stationTag("4 · Preprocess","to_sequence()",18.2,3.6,-1.4);
+stationTag("5 · Split + augment","train / val / test",22.8,3.6,-1.4);
+stationTag("6 · Train","BiLSTM-Attention · 66,596 params",28.2,4.7,-1.4);
+stationTag("7 · Attention","which joints matter",SX.attn,3.2,-1.4);
+stationTag("8 · Test","realistic conditions",SX.test,3.4,-1.4);
+stationTag("9 · Live app","inference_gesture_select.py",SX.live+0.6,3.5,-1.4);
+
+/* webcam on a tripod */
+function Webcam(){const g=new THREE.Group();const dark=M(0x1f2937,{roughness:0.4,metalness:0.3});
+  for(let k=0;k<3;k++){const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,1.15,8),dark);const a=k*2.094;leg.position.set(Math.cos(a)*0.18,0.55,Math.sin(a)*0.18);leg.rotation.set(Math.sin(a)*0.3,0,-Math.cos(a)*0.3);g.add(leg);}
+  const body=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.16,0.14),dark);body.position.y=1.17;g.add(body);
+  const lens=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.06,24),M(0x0b1220,{roughness:0.2,metalness:0.6}));lens.rotation.x=Math.PI/2;lens.position.set(0,1.17,-0.09);g.add(lens);
+  const led=new THREE.Mesh(new THREE.SphereGeometry(0.018,10,8),new THREE.MeshBasicMaterial({color:0xef4444}));led.position.set(0.1,1.21,-0.075);g.add(led);
+  g.userData.led=led;return g;}
+
+/* ===== Station 1: record ===== */
+const S1=Skeleton();S1.position.set(SX.rec,0,0);scene.add(S1);
+const cam1=Webcam();cam1.position.set(SX.rec,0,3);scene.add(cam1);
+const frGeo=new THREE.BufferGeometry();{const L=P(SX.rec,1.17,2.91),cs=[P(-1.1,0,0),P(1.1,0,0),P(1.1,2.1,0),P(-1.1,2.1,0)].map(c=>c.add(P(SX.rec,0,0)));
+  const v=[];cs.forEach(c=>v.push(L.x,L.y,L.z,c.x,c.y,c.z));for(let k=0;k<4;k++){const a=cs[k],b=cs[(k+1)%4];v.push(a.x,a.y,a.z,b.x,b.y,b.z);}frGeo.setAttribute("position",new THREE.Float32BufferAttribute(v,3));}
+const frustum=new THREE.LineSegments(frGeo,new THREE.LineBasicMaterial({color:0x60a5fa,transparent:true,opacity:0.45}));scene.add(frustum);
+const gateIdx=[15,16,27,28];
+const gates=gateIdx.map(()=>{const m=new THREE.Mesh(new THREE.TorusGeometry(0.09,0.012,10,32),new THREE.MeshBasicMaterial({color:0x22c55e}));scene.add(m);return m;});
+const noseGeo=new THREE.BufferGeometry();noseGeo.setAttribute("position",new THREE.BufferAttribute(new Float32Array(32*6),3));
+const noseLines=new THREE.LineSegments(noseGeo,new THREE.LineBasicMaterial({color:COL.feat,transparent:true,opacity:0.9}));scene.add(noseLines);
+const originTag=textSprite(420,84,1.05);scene.add(originTag);
+const counter1=textSprite(520,96,1.6);counter1.position.set(SX.rec+1.4,2.35,0);scene.add(counter1);
+
+/* ===== Station 2: the 66-number vector ===== */
+const STRIP_W=4.2,cellW=STRIP_W/66;
+const cells=[];for(let c=0;c<66;c++){const m=new THREE.Mesh(new THREE.BoxGeometry(cellW*0.8,1,0.12),M(c%2?0x5eead4:COL.feat,{emissive:c%2?0x5eead4:COL.feat,emissiveIntensity:0.25}));
+  m.position.set(SX.vec-STRIP_W/2+cellW*(c+0.5),1.3,0);scene.add(m);cells.push(m);}
+const stripBase=new THREE.Mesh(new THREE.BoxGeometry(STRIP_W+0.2,0.04,0.3),M(0x334155));stripBase.position.set(SX.vec,1.28,0);scene.add(stripBase);
+const stripTag=textSprite(760,84,2.6);stripTag.position.set(SX.vec,0.95,0.2);scene.add(stripTag);
+const flyDots=[];for(let i=0;i<33;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(0.035,12,10),new THREE.MeshBasicMaterial({color:COL.joint}));scene.add(m);flyDots.push(m);}
+function vec66(pts){const n=pts[0],v=[];pts.forEach(p=>{v.push((p.x-n.x)/SCALE,(p.y-n.y)/SCALE);});return v;}
+function setStrip(v,reveal){cells.forEach((m,c)=>{const on=reveal==null||c<reveal;const h=on?0.05+Math.abs(v[c])*0.5:0.001;m.scale.y=h;m.position.y=1.3+h/2;m.visible=on;});}
+
+/* ===== Station 3: dataset stacks ===== */
+const STACK_COL=[0x60a5fa,0xa78bfa,0x5eead4,0xfacc15];
+const slabGeo=new THREE.BoxGeometry(1.05,0.0105,0.62);
+const stacks=STACK_COL.map((c,i)=>{const im=new THREE.InstancedMesh(slabGeo,M(c,{emissive:c,emissiveIntensity:0.15,roughness:0.5}),81);const d=new THREE.Object3D();
+  for(let k=0;k<81;k++){d.position.set((rnd()-0.5)*0.03,0.08+k*0.0125,(rnd()-0.5)*0.03);d.updateMatrix();im.setMatrixAt(k,d.matrix);}
+  im.position.set(SX.data-2.1+i*1.4,0,0);im.count=0;im.castShadow=true;im.frustumCulled=false;scene.add(im);
+  const pad=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.07,0.75),M(0x334155));pad.position.set(im.position.x,0.035,0);scene.add(pad);
+  const t=label(FILES[i].replace(".npy",""),null,1.35);t.position.set(im.position.x,1.42,0.15);scene.add(t);
+  const sh=textSprite(360,80,0.8);sh.position.set(im.position.x,1.2,0.15);scene.add(sh);
+  return {im,sh,n:0};});
+function setStack(i,n){const s=stacks[i];s.n=n;s.im.count=n;pill(s.sh,`(${n}, 66)`,isDark()?"#e6ecf5":"#0f172a",isDark()?"rgba(30,41,59,0.9)":"rgba(226,232,240,0.95)");}
+const flySlab=new THREE.Mesh(new THREE.BoxGeometry(1.05,0.03,0.62),M(0xa78bfa,{emissive:0xa78bfa,emissiveIntensity:0.4}));scene.add(flySlab);
+const total3=textSprite(560,96,1.7);total3.position.set(SX.data,2.25,0.2);scene.add(total3);
+
+/* ===== Station 4: preprocess ===== */
+const S2=Skeleton();S2.position.set(SX.pre-0.9,0,0);scene.add(S2);
+const torsoBar=new THREE.Mesh(boneGeo,new THREE.MeshBasicMaterial({color:0xfacc15}));scene.add(torsoBar);
+const torsoTag=textSprite(560,84,1.6);scene.add(torsoTag);
+const GRID=new THREE.InstancedMesh(new THREE.BoxGeometry(0.14,0.055,0.1),M(0xffffff,{roughness:0.5}),66);
+{const d=new THREE.Object3D();for(let r=0;r<33;r++)for(let c=0;c<2;c++){d.position.set(c*0.17,2.75-r*0.068,0);d.updateMatrix();GRID.setMatrixAt(r*2+c,d.matrix);GRID.setColorAt(r*2+c,new THREE.Color(c?0x5eead4:COL.feat).convertSRGBToLinear());}}
+GRID.position.set(SX.pre+0.9,0,0);GRID.frustumCulled=false;scene.add(GRID);
+const gridTag=label("(33, 2)","33 joints × (x, y)",1.4);gridTag.position.set(SX.pre+0.98,0.3,0.3);scene.add(gridTag);
+
+/* ===== Station 5: split + augment ===== */
+const TL=new THREE.InstancedMesh(new THREE.BoxGeometry(0.03,0.12,0.06),M(0xffffff,{roughness:0.6}),324);
+const SPLIT_C=[0x5eead4,0xa78bfa,0xfacc15].map(h=>new THREE.Color(h).convertSRGBToLinear());
+{const d=new THREE.Object3D();for(let r=0;r<4;r++)for(let k=0;k<81;k++){d.position.set(-1.62+k*0.04,2.55-r*0.18,0);d.updateMatrix();TL.setMatrixAt(r*81+k,d.matrix);TL.setColorAt(r*81+k,SPLIT_C[k<48?0:k<60?1:2]);}}
+TL.position.set(SX.split,0,-0.9);TL.frustumCulled=false;scene.add(TL);
+const splitTag=textSprite(900,84,3.0);splitTag.position.set(SX.split,2.95,-0.9);scene.add(splitTag);
+const SA=Skeleton({jr:0.036,br:0.017});SA.position.set(SX.split,0,0.6);scene.add(SA);
+const ghosts=[];for(let k=0;k<15;k++){const l=LineSkel(0x5eead4,0.4);l.position.copy(SA.position);scene.add(l);ghosts.push(l);}
+const augTag=textSprite(640,96,1.9);augTag.position.set(SX.split+1.35,1.65,0.6);scene.add(augTag);
+function augPts(base,rot,sc,sigma){const c=P(0,0,0);[23,24].forEach(i=>c.add(base[i]));c.multiplyScalar(0.5);const cs=Math.cos(rot),sn=Math.sin(rot);
+  return base.map(p=>{const x=p.x-c.x,y=p.y-c.y;return P(c.x+(x*cs-y*sn)*sc+gauss()*sigma*0.42,c.y+(x*sn+y*cs)*sc+gauss()*sigma*0.42,p.z);});}
+
+/* ===== Station 6: model tower ===== */
+const LAYERS=[["Input  skeleton","(33, 2) · 0 params",0x64748b],["Joint embedding","Dense(32) per joint · 96",0xa78bfa],["BiLSTM(64)","(33, 128) · 49,664",0x5eead4],
+  ["Additive attention","64 units · 8,320",0x2dd4bf],["Dense(64) + Dropout","(64) · 8,256",0x60a5fa],["Softmax","4 asanas · 260",0xfacc15]];
+const plates=LAYERS.map(([n,s,c],i)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(2.3,0.1,1.4),M(c,{emissive:c,emissiveIntensity:0.12,transparent:true,opacity:0.9,roughness:0.4}));
+  m.position.set(SX.model,0.45+i*0.66,0);scene.add(m);const t=label(n,s,2.1);t.position.set(SX.model+2.25,0.5+i*0.66,0);scene.add(t);return m;});
+const pillar=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,3.4,8),M(0x475569));pillar.position.set(SX.model-1.05,2.1,-0.6);scene.add(pillar);
+const lstmCubes=[];for(let k=0;k<33;k++){const m=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.06,0.05),M(0x0f766e,{emissive:0x5eead4,emissiveIntensity:0}));m.position.set(SX.model-1.04+k*0.065,0.45+2*0.66+0.09,0.35);scene.add(m);lstmCubes.push(m);}
+const attnBars=[];for(let k=0;k<33;k++){const m=new THREE.Mesh(new THREE.BoxGeometry(0.045,1,0.05),M(0x2dd4bf,{emissive:0x2dd4bf,emissiveIntensity:0.3}));m.position.set(SX.model-1.04+k*0.065,0,0.35);scene.add(m);attnBars.push(m);}
+const outBars=[0,1,2,3].map(k=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.32,1,0.2),M(0xfacc15,{emissive:0xfacc15,emissiveIntensity:0.2}));m.position.set(SX.model-0.6+k*0.4,0,0.25);scene.add(m);return m;});
+const sparks=[];for(let k=0;k<22;k++){const m=new THREE.Mesh(new THREE.SphereGeometry(0.035,10,8),new THREE.MeshBasicMaterial({color:0xfacc15}));scene.add(m);sparks.push({m,o:rnd(),x:(rnd()-0.5)*1.8,z:(rnd()-0.5)*1.0});}
+const trainTag=textSprite(760,96,2.3);trainTag.position.set(SX.model,4.35,0.2);scene.add(trainTag);
+
+
+/* ===== Station 7: attention ===== */
+const S3=Skeleton();S3.position.set(SX.attn,0,0.3);scene.add(S3);
+const attnTag=textSprite(760,96,1.7);attnTag.position.set(SX.attn,2.2,0.3);scene.add(attnTag);
+
+/* ===== Station 8: test ===== */
+const S4=Skeleton();S4.position.set(SX.test-0.7,0,0);scene.add(S4);
+const gaugeCv=makeCanvas(440,440);const gauge=new THREE.Sprite(new THREE.SpriteMaterial({map:gaugeCv.t,transparent:true,depthWrite:false}));gauge.scale.set(1.5,1.5,1);gauge.position.set(SX.test+1.35,1.45,0.2);scene.add(gauge);
+let gaugeKey="";function drawGauge(frac,draw){const key=frac.toFixed(3)+draw+isDark();if(key===gaugeKey)return;gaugeKey=key;gaugeCv.draw((x,w,h)=>{const d=isDark();
+  x.fillStyle=d?"rgba(14,20,32,0.94)":"rgba(255,255,255,0.96)";rr(x,6,6,w-12,h-12,36);x.fill();
+  x.lineWidth=30;x.strokeStyle=d?"rgba(148,170,210,0.2)":"rgba(30,41,59,0.12)";x.beginPath();x.arc(w/2,200,120,0,Math.PI*2);x.stroke();
+  x.strokeStyle="#5eead4";x.lineCap="round";x.beginPath();x.arc(w/2,200,120,-Math.PI/2,-Math.PI/2+Math.PI*2*frac*0.95);x.stroke();
+  x.fillStyle=d?"#e6ecf5":"#0f172a";x.textAlign="center";x.font=`700 70px ${HEAD}`;x.fillText("95.0%",w/2,222);
+  x.font=`400 30px ${SANS}`;x.fillStyle=d?"#93a1b8":"#475569";x.fillText(draw<10?"± 3.0% · draw "+draw+" / 10":"± 3.0%, mean of 10 draws",w/2,385);});}
+const testTag=textSprite(760,84,2.2);testTag.position.set(SX.test-0.5,2.55,0.2);scene.add(testTag);
+
+/* ===== Station 9: live app ===== */
+const S5=Skeleton();S5.position.set(SX.live-1.3,0,0.4);scene.add(S5);
+const cam2=Webcam();cam2.position.set(SX.live-1.3,0,3.1);scene.add(cam2);
+const appCv=makeCanvas(1050,705);
+const screenFrame=new THREE.Mesh(new THREE.BoxGeometry(3.12,2.14,0.08),M(0x0b1220,{roughness:0.35,metalness:0.4}));screenFrame.position.set(SX.live+1.7,1.75,-0.5);scene.add(screenFrame);
+const screen=new THREE.Mesh(new THREE.PlaneGeometry(3.0,2.014),new THREE.MeshBasicMaterial({map:appCv.t}));screen.position.set(SX.live+1.7,1.75,-0.455);scene.add(screen);
+const sStand=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.7,0.12),M(0x1f2937));sStand.position.set(SX.live+1.7,0.35,-0.5);scene.add(sStand);
+const fingerTag=textSprite(400,96,1.0);scene.add(fingerTag);
+const REF={};KEYS.forEach(k=>REF[k]=POSES[k]);
+
+function drawApp(st){appCv.draw((x,W,H)=>{
+  const k=0.75,MW=940*k,PW=W-MW;
+  x.fillStyle="#000";x.fillRect(0,0,MW,H);x.fillStyle="rgb(25,30,40)";x.fillRect(MW,0,PW,H);
+  const yellow="rgb(255,215,0)",white="#fff",grey="rgb(160,160,160)",green="rgb(0,255,0)",red="rgb(255,60,60)",F=s=>`${s}px Arial, sans-serif`;
+  const T=(t,X,Y,s,c)=>{x.fillStyle=c;x.font=F(s);x.textAlign="left";x.fillText(t,X,Y);};
+  const C=(t,Y,s,c)=>{x.fillStyle=c;x.font=F(s);x.textAlign="center";x.fillText(t,MW/2,Y);};
+  const bar=(X,Y,w,p,c)=>{x.strokeStyle="rgb(90,90,90)";x.lineWidth=1;x.strokeRect(X,Y,w,10);if(p>0){x.fillStyle=c;x.fillRect(X+2,Y+2,(w-4)*p,6);}};
+  if(st.phase==="menu"){T("Step 1 of 2: choose an asana",38,40,24,yellow);T("Show 1-4 fingers on one hand and hold them still.",38,72,16,white);
+    T("The list on the right shows which number picks which asana.",38,94,16,white);
+    T(st.fingers?`Fingers detected: ${st.fingers}`:"No hand detected: hold your hand up, palm facing the camera",38,132,16,st.fingers?"rgb(120,220,120)":grey);bar(38,142,300,st.progress||0,yellow);}
+  else if(st.phase==="time"){T("Step 2 of 2: hold time for High Lunge",38,36,21,yellow);T("Fingers:  1 = 10s   2 = 20s   3 = 30s   4 = 45s   5 = 60s",38,68,16,white);
+    if(!st.lowered)T("Lower your hand first, then show fingers for the time.",38,100,16,grey);
+    else{T("Show fingers and hold them still (or press 1-5).",38,100,16,white);T(`Fingers detected: ${st.fingers||0}`,38,132,16,st.fingers?"rgb(120,220,120)":grey);bar(38,142,300,st.progress||0,yellow);}}
+  else if(st.phase==="count")C(`Starting in ${st.n}`,142,42,green);
+  else if(st.phase==="timer")C(`Timer: ${st.t}s / 20s`,142,34,green);
+  else if(st.phase==="wrong")C("Perform the asana correctly",142,30,red);
+  else if(st.phase==="done"){C("Asana Completed!",112,34,green);C(`Back to the menu in ${st.n}...`,150,20,white);}
+  /* camera view */
+  const cx=(MW-480)/2,cy=(H-360)/2;const g=x.createLinearGradient(0,cy,0,cy+360);g.addColorStop(0,"#5b5148");g.addColorStop(0.7,"#3b342e");g.addColorStop(1,"#6b4a3a");
+  x.fillStyle=g;x.fillRect(cx,cy,480,360);
+  if(st.pts){const s=150;const ox=cx+240,oy=cy+340;const p=st.pts.map(v=>[ox+v.x*s,oy-v.y*s]);
+    x.strokeStyle="#fff";x.lineWidth=4;BODY.forEach(([i,j])=>{x.beginPath();x.moveTo(p[i][0],p[i][1]);x.lineTo(p[j][0],p[j][1]);x.stroke();});
+    x.fillStyle="#ff2a2a";p.forEach(q=>{x.beginPath();x.arc(q[0],q[1],3.5,0,7);x.fill();});
+    if(st.full===false){x.fillStyle=red;x.font=F(15);x.textAlign="center";x.fillText("Make sure your full body is visible",cx+240,cy+330);}}
+  if(st.phase!=="menu"&&st.phase!=="done"){const lab=st.phase==="time"?"B = back to asana menu  (or both hands up)":"B = back to hold-time step  (or step closer + both hands)";
+    x.font=F(13);const w=x.measureText(lab).width;x.fillStyle="#000";x.fillRect(cx,cy,w+16,26);x.fillStyle="#e6e6e6";x.textAlign="left";x.fillText(lab,cx+8,cy+18);}
+  /* side panel */
+  const px=MW+15;
+  if(st.phase==="menu"){T("Choose an asana",px,40,22,yellow);T("Show this many fingers:",px,68,14,"rgb(200,200,200)");
+    NAMES.forEach((n,i)=>{const Y=112+i*68,on=st.highlight===i+1;if(on){x.fillStyle="rgb(40,60,70)";x.fillRect(MW+9,Y-30,PW-18,46);}
+      x.strokeStyle=yellow;x.lineWidth=2;x.beginPath();x.arc(px+18,Y-7,15,0,7);if(on){x.fillStyle=yellow;x.fill();}else x.stroke();
+      x.fillStyle=on?"rgb(25,30,40)":yellow;x.font=F(16);x.textAlign="center";x.fillText(String(i+1),px+18,Y-1);T(n,px+46,Y-1,16,white);});
+    T("Keyboard: press 1-4",px,H-46,13,grey);T("Esc: quit",px,H-24,13,grey);}
+  else{T("High Lunge",px,40,22,yellow);T("Ashta Chandrasana",px,66,14,"rgb(190,190,190)");x.strokeStyle="rgb(90,90,90)";x.beginPath();x.moveTo(px,84);x.lineTo(W-15,84);x.stroke();
+    T("Match this pose",px,112,16,white);
+    const r=REF["high lunge"];let lo=[9,9],hi=[-9,-9];r.forEach(([a,b])=>{lo=[Math.min(lo[0],a),Math.min(lo[1],b)];hi=[Math.max(hi[0],a),Math.max(hi[1],b)];});
+    const top=140,bot=H-70,bw=PW-50,bh=bot-top,sc=Math.min(bw/(hi[0]-lo[0]),bh/(hi[1]-lo[1]))*0.85,ccx=MW+PW/2,ccy=(top+bot)/2;
+    const q=r.map(([a,b])=>[ccx+(a-(lo[0]+hi[0])/2)*sc,ccy-(b-(lo[1]+hi[1])/2)*sc]);
+    x.lineWidth=4;x.lineCap="round";BODY.forEach(([i,j])=>{x.strokeStyle=(i>=11&&j>=11&&i%2===j%2)?(i%2?"rgb(60,170,255)":"rgb(255,170,60)"):"rgb(235,235,235)";x.beginPath();x.moveTo(q[i][0],q[i][1]);x.lineTo(q[j][0],q[j][1]);x.stroke();});
+    x.strokeStyle="rgb(235,235,235)";x.lineWidth=2.5;x.beginPath();x.arc(q[0][0],q[0][1],18,0,7);x.stroke();
+    x.fillStyle=yellow;for(let i=11;i<33;i++){x.beginPath();x.arc(q[i][0],q[i][1],4.5,0,7);x.fill();}
+    T("blue = left side   orange = right side",px,H-40,12,"rgb(190,190,190)");}
+});}
+
+/* ---------- live-app body poses ---------- */
+const STAND=posePts("pyramid pose",0.85),HL=posePts("high lunge"),LL=posePts("low lunge");
+function raiseHand(base,k){const p=base.map(v=>v.clone());const sh=p[12];
+  const el=P(sh.x-0.28,sh.y+0.02,sh.z+0.05),wr=P(sh.x-0.34,sh.y+0.38,sh.z+0.12);
+  [[14,el],[16,wr],[18,wr.clone().add(P(-0.03,0.08,0))],[20,wr.clone().add(P(0.0,0.1,0))],[22,wr.clone().add(P(0.04,0.06,0))]].forEach(([i,t])=>p[i].lerp(t,k));return p;}
+
+/* ---------- stages ---------- */
+const STAGES=[
+ {t:"Pick an asana and step into view",w:"Record",f:"src/data_collection.py",cam:[P(1.6,2.1,6.6),P(-1.0,1.05,0.4)],dur:8,
+  b:"The data-collection script asks for the asana's name, opens the webcam and waits for you to get into the pose. The frame is mirrored, so it works like a mirror.",
+  x:`<pre>$ python src/data_collection.py
+Enter the name of the Asana : 02_high lunge</pre>`},
+ {t:"MediaPipe Pose finds 33 landmarks",w:"Record",f:"mp.solutions.pose",cam:[P(0.9,1.7,4.4),P(-0.75,0.95,0)],dur:8,
+  b:"Every frame goes through MediaPipe Pose, which returns 33 body landmarks with a visibility score. A frame is only kept when both wrists and both ankles are clearly visible, the four rings here.",
+  x:`<pre>def inFrame(lst):
+    return (lst[28].visibility > 0.6 and lst[27].visibility > 0.6 and
+            lst[15].visibility > 0.6 and lst[16].visibility > 0.6)</pre>`},
+ {t:"Every landmark becomes an offset from the nose",w:"Record",f:"src/data_collection.py",cam:[P(0.8,1.6,4.0),P(-0.65,1.0,0)],dur:7,
+  b:"Subtracting the nose position (landmark 0) from every landmark removes where you happen to stand in the picture. Only x and y are kept.",
+  x:`<pre>for i in res.pose_landmarks.landmark:
+    lst.append(i.x - res.pose_landmarks.landmark[0].x)
+    lst.append(i.y - res.pose_landmarks.landmark[0].y)</pre>`},
+ {t:"One frame is 66 numbers; 81 frames per asana",w:"Vector",f:"data/poses/02_high lunge.npy",cam:[P(6.4,3.2,9.4),P(6.6,1.0,0)],dur:11,
+  b:"33 landmarks × (x, y) gives a 66-value row. Rows are collected until there are 81, then saved as one NumPy file per asana. The bars show the real offsets of the recorded High Lunge.",
+  x:`<pre>if cv2.waitKey(1) == 27 or data_size > 80:   # stop after 81 frames
+    break
+np.save(POSES_DIR / f"{name}.npy", np.array(X))   # shape (81, 66)</pre>`},
+ {t:"Four asanas, 324 frames",w:"Dataset",f:"data/poses/",cam:[P(11.6,2.6,6.8),P(11.4,0.75,0)],dur:7,
+  b:"The same recording is repeated for each asana. The whole dataset is four small files: one subject, one room, 81 frames each.",
+  x:`<pre>01_extended side angle pose.npy   (81, 66)
+02_high lunge.npy                 (81, 66)
+03_low lunge.npy                  (81, 66)
+04_pyramid pose.npy               (81, 66)
+total                             324 frames</pre>`},
+ {t:"Reshape to a skeleton and remove body size",w:"Preprocess",f:"notebooks/bilstm_attention.ipynb",cam:[P(17.6,2.0,6.4),P(17.2,1.35,0)],dur:8,
+  b:"Each 66-value row is reshaped into 33 joints × (x, y), so the model can read the body joint by joint. Every frame is then divided by its torso length, so distance to the camera and body size drop out.",
+  x:`<pre>seq   = flat.reshape(N, 33, 2)
+torso = ‖mid(11, 12) − mid(23, 24)‖     # shoulders to hips
+seq   = seq / max(torso, 1e-6)</pre>`},
+ {t:"Split in recording order, then augment",w:"Split + augment",f:"notebooks/bilstm_attention.ipynb",cam:[P(22.6,2.4,6.8),P(22.0,1.35,-0.2)],dur:9,
+  b:"Neighbouring webcam frames are almost identical, so each asana is split in time order: the first 60% for training, the next 15% for validation, the last 25% for testing. Only the training frames are augmented.",
+  x:`<pre>per asana:  48 train · 12 val · 21 test   (192 / 48 / 84)
+augment():  15 copies of every training frame
+            rotation ±8°, scale ±10%, jitter σ ∈ [0.01, 0.15]
+            192 → 3,072 training skeletons</pre>`},
+ {t:"Train the BiLSTM-Attention model",w:"Train",f:"models/bilstm_attention.keras",cam:[P(29.4,3.0,9.6),P(28.4,2.35,0)],dur:10,
+  b:"Each joint is embedded, a bidirectional LSTM reads the 33 joints in both directions, and an additive attention layer pools them into one vector before the softmax. This is the main model of the paper.",
+  x:`<pre>optimiser   Adam, lr 1e-3, sparse categorical cross-entropy
+schedule    up to 100 epochs, batch 32
+            EarlyStopping (patience 15), ReduceLROnPlateau (×0.5)
+seed        42</pre>`},
+ {t:"Attention shows which joints matter",w:"Attention",f:"attention_viewer",cam:[P(35.8,1.75,4.5),P(34.1,1.0,0.3)],dur:12,
+  b:"A second Keras model shares the weights and outputs the attention weights α. On the test set it concentrates on the joints that tell these poses apart: the extended arm for Extended Side Angle, the stance for the lunges and Pyramid.",
+  x:`<pre>Extended Side Angle  R wrist, R elbow, R pinky, L wrist, L pinky
+High Lunge           L heel, R ankle, R heel, L foot, L ankle
+Low Lunge            R heel, L heel, L foot, R foot, R ankle
+Pyramid              R heel, L heel, L foot, R ankle, R foot</pre>`},
+ {t:"Test under realistic webcam conditions",w:"Test",f:"notebooks/bilstm_attention.ipynb",cam:[P(39.2,2.1,6.0),P(38.4,1.1,0)],dur:11,
+  b:"The 84 held-out test frames are distorted the way a live session would distort them, over 10 random draws. On clean test frames the model gets 84 out of 84; under these conditions it scores 95.0% ± 3.0%.",
+  x:`<pre>camera tilt     rotation up to ±15°
+distance        scale ±20%
+landmark jitter Gaussian σ = 0.15 (torso units)
+occlusion       4 joints per frame mislocated (σ = 0.5)</pre>`},
+ {t:"Live: choose with your fingers",w:"Live app",f:"src/inference_gesture_select.py",cam:[P(45.2,2.4,7.8),P(44.3,1.45,0)],dur:13,
+  b:"In the live app, MediaPipe Hands counts raised fingers. Hold up N fingers for 1.5 s to choose asana N, lower your hand, then show 1 to 5 fingers to choose 10, 20, 30, 45 or 60 seconds. Keys 1 to 4 and 1 to 5 also work.",
+  x:`<pre>1 finger  Extended Side Angle Pose     1 = 10 s
+2 fingers High Lunge                   2 = 20 s
+3 fingers Low Lunge                    3 = 30 s
+4 fingers Pyramid Pose                 4 = 45 s
+                                       5 = 60 s</pre>`},
+ {t:"Live: the timer runs only while the pose is right",w:"Live app",f:"src/inference_gesture_select.py",cam:[P(45.2,2.4,7.8),P(44.3,1.45,0)],dur:16,
+  b:"Each frame is classified. The timer counts only while the prediction is the chosen asana with confidence above 0.75. It pauses when the pose breaks and resumes from where it was; at the end it returns to the menu. Shown here at double speed.",
+  note:"The live scripts currently load the Dense baseline checkpoint (models/model_001.h5). The BiLSTM-Attention model behind the reported results runs at about 8 ms per frame as a compiled tf.function in the benchmark.",
+  x:""},
+ {t:"End to end",w:"Whole pipeline",f:"",cam:[P(23.5,16,36),P(22,0.4,0)],dur:10,
+  b:"Webcam frames become MediaPipe landmarks, landmarks become a small dataset, the dataset trains and tests a BiLSTM-Attention classifier, and the classifier drives a posture-aware timer you control with your hands.",
+  x:`<pre>webcam → MediaPipe Pose (33) → 66 values → 33 × 2, ÷ torso
+       → BiLSTM-Attention (66,596 params) → asana + confidence
+       → timer runs while confidence > 0.75</pre>`}
+];
+
+let stage=0,stageStart=0,playing=!matchMedia("(prefers-reduced-motion: reduce)").matches;
+const camPos=P(0,0,0),camLook=P(0,0,0);let camInit=false;
+
+function resetAll(s){
+  rngSeed=7;
+  S1.set(s===0?STAND.map(p=>p.clone()):HL);S1.highlight(null);
+  gates.forEach(g=>g.visible=false);noseLines.visible=false;originTag.visible=false;counter1.visible=s===0||s===3;
+  pill(counter1,s<=2?"frames 0 / 81":"frames 81 / 81","#062a26","#5eead4");
+  const v=vec66(HL);setStrip(v,s>=3?null:0);stripTag.visible=s>=3;
+  pill(stripTag,"66 values: x (purple), y (teal) per landmark",isDark()?"#e6ecf5":"#0f172a",isDark()?"rgba(14,20,32,0.92)":"rgba(255,255,255,0.95)");
+  flyDots.forEach(d=>d.visible=false);flySlab.visible=false;
+  stacks.forEach((st,i)=>setStack(i,s>=5?81:s===4?(i===1?81:0):s===3?0:0));if(s>=5)stacks.forEach((st,i)=>setStack(i,81));
+  pill(total3,s>=4?"324 frames in 4 files":"",isDark()?"#e6ecf5":"#0f172a",isDark()?"rgba(14,20,32,0.92)":"rgba(255,255,255,0.95)");total3.visible=s>=4;
+  S2.set(HL);S2.scale.setScalar(1);torsoBar.visible=false;torsoTag.visible=false;GRID.count=s>=5?66:0;
+  TL.count=s>=6?324:0;splitTag.visible=s>=6;pill(splitTag,"train 60%  ·  val 15%  ·  test 25%   (in recording order)",isDark()?"#e6ecf5":"#0f172a",isDark()?"rgba(14,20,32,0.92)":"rgba(255,255,255,0.95)");
+  SA.set(HL);ghosts.forEach(g=>{g.visible=false;});augTag.visible=s>=6;pill(augTag,s>=6?"192 → 3,072 skeletons":"",isDark()?"#e6ecf5":"#0f172a",isDark()?"rgba(14,20,32,0.92)":"rgba(255,255,255,0.95)");
+  if(s>6){ghosts.forEach(g=>{g.visible=true;g.set(augPts(HL,(rnd()*2-1)*8*Math.PI/180,1+(rnd()*2-1)*0.1,0.01+rnd()*0.14));});}
+  sparks.forEach(p=>p.m.visible=false);lstmCubes.forEach(c=>c.material.emissiveIntensity=0);
+  attnBars.forEach((b,k)=>{const r=ATTN[1].map(n=>JI[n]).indexOf(k);const h=r>=0?0.5-r*0.07:0.04;b.scale.y=h;b.position.y=0.45+3*0.66+0.05+h/2;});
+  outBars.forEach((b,k)=>{const h=k===1?0.5:0.08;b.scale.y=h;b.position.y=0.45+5*0.66+0.05+h/2;});
+  trainTag.visible=s===7;
+  S3.set(HL);S3.highlight(null);attnTag.visible=s===8;
+  S4.set(LL);S4.highlight(null);drawGauge(s>9?1:0,s>9?10:0);testTag.visible=s===9;
+  S5.set(STAND);fingerTag.visible=false;
+  drawApp({phase:s===11||s===12?"timer":"menu",t:0,pts:S5.userData.pts,highlight:0});
+  cam1.userData.led.visible=s<=3;
+}
+
+function update(s,t){
+  const pulse=0.5+0.5*Math.sin(t*6);
+  cam1.userData.led.material.color.set(s<=3&&pulse>0.5?0xef4444:0x7f1d1d).convertSRGBToLinear();
+  if(s===0){const k=seg(t,1.2,4.2);S1.set(lerpPts(STAND,HL,k));}
+  else if(s===1){
+    S1.set(HL);const n=Math.min(33,Math.floor(seg(t,0.3,4.5)*33.99));const map={};for(let i=0;i<n;i++)map[i]=1+0.4*Math.max(0,1-(n-1-i)/4);S1.highlight(map);
+    gates.forEach((g,k)=>{g.visible=t>4.6;const p=S1.userData.pts[gateIdx[k]];g.position.set(p.x+S1.position.x,p.y,p.z);g.lookAt(camera.position);g.scale.setScalar(1+0.15*pulse);});
+  }
+  else if(s===2){
+    S1.set(HL);const n=S1.userData.pts[0],a=noseGeo.attributes.position.array;const k=seg(t,0.8,3.8);
+    for(let i=1;i<33;i++){const p=S1.userData.pts[i];const e=n.clone().lerp(p,k);a.set([n.x,n.y,n.z,e.x,e.y,e.z],(i-1)*6);}
+    noseGeo.attributes.position.needsUpdate=true;noseGeo.computeBoundingSphere();noseLines.position.copy(S1.position);noseLines.visible=true;
+    const m={0:2.2};S1.highlight(m);originTag.visible=true;originTag.position.set(n.x+S1.position.x+0.55,n.y+0.3,n.z);
+    pill(originTag,"nose = origin (0, 0)","#1e1b4b","#c4b5fd");
+  }
+  else if(s===3){
+    const v=vec66(HL);const fly=seg(t,0.4,2.6);
+    flyDots.forEach((d,i)=>{const from=S1.userData.pts[i].clone().add(S1.position);const c0=cells[i*2],c1=cells[i*2+1];
+      const to=P((c0.position.x+c1.position.x)/2,1.36,0);const kk=seg(t,0.4+i*0.03,1.6+i*0.03);d.visible=kk>0&&kk<1;d.position.lerpVectors(from,to,kk);d.position.y+=Math.sin(kk*Math.PI)*0.9;});
+    setStrip(v,Math.floor(seg(t,1.0,2.7)*66.99));
+    if(t>2.8&&t<3.9){flySlab.visible=true;const kk=seg(t,2.8,3.9);flySlab.position.lerpVectors(P(SX.vec,1.4,0),P(stacks[1].im.position.x,0.1,0),kk);flySlab.position.y+=Math.sin(kk*Math.PI)*1.2;}
+    else flySlab.visible=false;
+    const n=t<3.9?0:Math.min(81,1+Math.floor((t-3.9)/0.075));setStack(1,n);pill(counter1,`frames ${n} / 81`,"#062a26","#5eead4");
+    if(n>=81)pill(counter1,"saved: (81, 66)","#062a26","#5eead4");
+  }
+  else if(s===4){[0,2,3].forEach((i,j)=>setStack(i,Math.min(81,Math.floor(seg(t,0.4+j*1.4,1.9+j*1.4)*81.99))));}
+  else if(s===5){
+    const k=seg(t,0.4,2.6);GRID.count=Math.min(66,Math.floor(k*66.99));
+    const sc=lerp(1.28,1,seg(t,3.2,5.2));S2.scale.setScalar(sc);
+    const p=S2.userData.pts,sm=p[11].clone().add(p[12]).multiplyScalar(0.5),hm=p[23].clone().add(p[24]).multiplyScalar(0.5);
+    const a=sm.multiplyScalar(sc).add(S2.position).add(P(0,0,0.12)),b=hm.multiplyScalar(sc).add(S2.position).add(P(0,0,0.12));
+    torsoBar.visible=t>2.6;placeBone(torsoBar,a,b);torsoBar.scale.x=torsoBar.scale.z=0.025;
+    torsoTag.visible=t>2.6;torsoTag.position.set(S2.position.x-1.15,(a.y+b.y)/2,0.3);pill(torsoTag,t<5.2?"÷ torso length":"torso = 1 unit","#3b2f00","#fde68a");
+  }
+  else if(s===6){
+    TL.count=Math.min(324,Math.floor(seg(t,0.3,2.6)*324.99));
+    const shown=Math.min(15,Math.floor(seg(t,3,6.5)*15.99));
+    ghosts.forEach((g,k)=>{g.visible=k<shown;if(k<shown&&(g.userData.t==null||t-g.userData.t>1.6||t<g.userData.t)){g.userData.t=t;g.set(augPts(HL,(rnd()*2-1)*8*Math.PI/180,1+(rnd()*2-1)*0.1,0.01+rnd()*0.14));}});
+    const n=192+Math.round(shown*192);pill(augTag,`${n.toLocaleString("en-US")} training skeletons`,isDark()?"#e6ecf5":"#0f172a",isDark()?"rgba(14,20,32,0.92)":"rgba(255,255,255,0.95)");
+  }
+  else if(s===7){
+    sparks.forEach(p=>{p.m.visible=true;const u=(t*0.35+p.o)%1;p.m.position.set(SX.model+p.x,0.4+u*3.5,p.z);});
+    const sw=Math.floor(t*22)%66,pos=sw<33?sw:65-sw;lstmCubes.forEach((c,k)=>c.material.emissiveIntensity=Math.max(0,1-Math.abs(k-pos)/3));
+    plates.forEach((pl,i)=>pl.material.emissiveIntensity=0.12+0.4*Math.max(0,Math.sin(t*3-i*0.8)));
+    trainTag.visible=true;pill(trainTag,"training on 3,072 skeletons · validating on 48",isDark()?"#e6ecf5":"#0f172a",isDark()?"rgba(14,20,32,0.92)":"rgba(255,255,255,0.95)");
+  }
+  else if(s===8){
+    const i=Math.floor(t/3)%4,u=(t%3)/3;const next=(i+1)%4;
+    S3.set(u<0.82?posePts(KEYS[i]):lerpPts(posePts(KEYS[i]),posePts(KEYS[next]),seg(u,0.82,1)));
+    const map={};if(u<0.82)ATTN[i].forEach((n,r)=>map[JI[n]]=2.1-r*0.22);S3.highlight(map);
+    pill(attnTag,`${NAMES[i]} · top 5`,"#042f2e","#99f6e4");
+  }
+  else if(s===9){
+    const d=Math.min(10,Math.floor(t/0.95)+1),u=t%0.95;rngSeed=1000+d*97;
+    const base=LL;const rot=(rnd()*2-1)*15*Math.PI/180,sc=1+(rnd()*2-1)*0.2;const pts=augPts(base,rot,sc,0.15*0.95);
+    const occ=new Set();while(occ.size<4)occ.add(11+Math.floor(rnd()*22));const torso=0.52*SCALE;
+    occ.forEach(j=>pts[j].add(P(gauss()*0.5*torso,gauss()*0.5*torso,0)));
+    S4.set(pts);const map={};occ.forEach(j=>map[j]=1.5);S4.highlight(null);S4.userData.J.forEach((m,j)=>{if(occ.has(j)){m.material.color.set(COL.bad).convertSRGBToLinear();m.material.emissive.set(COL.bad).convertSRGBToLinear();m.scale.setScalar(1.6);}});
+    drawGauge(d/10,d);pill(testTag,"red = mislocated joints (occlusion)","#450a0a","#fecaca");
+  }
+  else if(s===10){
+    let pts=STAND,st={phase:"menu",fingers:0,progress:0,highlight:0};
+    const up1=seg(t,1,1.8)*(1-seg(t,3.4,4.2)),up2=seg(t,4.6,5.4)*(1-seg(t,7,7.8));
+    pts=raiseHand(STAND,Math.max(up1,up2));
+    if(t<1.8)st={phase:"menu",fingers:0};
+    else if(t<3.3)st={phase:"menu",fingers:2,progress:seg(t,1.8,3.3),highlight:2};
+    else if(t<5.4)st={phase:"time",lowered:t>4.2,fingers:0};
+    else if(t<6.9)st={phase:"time",lowered:true,fingers:2,progress:seg(t,5.4,6.9)};
+    else{st={phase:"count",n:Math.max(0,5-Math.floor((t-6.9)/1.0))};if(t>8.6)pts=lerpPts(STAND,HL,seg(t,8.6,10.6));}
+    const fingersUp=(t>1.8&&t<3.4)||(t>5.4&&t<7.0);fingerTag.visible=fingersUp;
+    if(fingersUp){const w=pts[16].clone().add(S5.position);fingerTag.position.set(w.x-0.35,w.y+0.25,w.z);pill(fingerTag,"2 fingers","#431407","#fed7aa");}
+    S5.set(pts);st.pts=pts;drawApp(st);
+  }
+  else if(s===11){
+    let pts=HL,st;
+    if(t<5){st={phase:"timer",t:Math.floor(t*2)};}
+    else if(t<8){const k=seg(t,5,5.6)*(1-seg(t,7.4,8));pts=lerpPts(HL,STAND,k);st=k>0.35?{phase:"wrong"}:{phase:"timer",t:10};}
+    else if(t<13){st={phase:"timer",t:Math.min(20,10+Math.floor((t-8)*2))};}
+    else{st={phase:"done",n:Math.max(1,3-Math.floor(t-13))};pts=lerpPts(HL,STAND,seg(t,13.3,14.8));}
+    S5.set(pts);st.pts=pts;drawApp(st);
+  }
+}
+
+/* ---------- panel ---------- */
+const $=id=>document.getElementById(id);
+STAGES.forEach((S,i)=>{const b=document.createElement("button");b.setAttribute("aria-label",`Stage ${i+1}: ${S.t}`);b.onclick=()=>go(i);$("dots").appendChild(b);});
+function panel(){const S=STAGES[stage];$("count").textContent=`${stage+1} of ${STAGES.length}`;$("where").textContent=S.w;$("file").textContent=S.f;
+  $("ttl").textContent=S.t;$("body").textContent=S.b;
+  $("extra").innerHTML=(S.note?`<p class="note"></p>`:"")+S.x;if(S.note)$("extra").querySelector(".note").textContent=S.note;
+  [...$("dots").children].forEach((b,i)=>b.setAttribute("aria-current",String(i===stage)));
+  $("prev").disabled=stage===0;$("next").disabled=stage===STAGES.length-1;}
+function go(s){stage=Math.max(0,Math.min(STAGES.length-1,s));stageStart=performance.now();resetAll(stage);panel();}
+function setPlaying(p){playing=p;$("play").textContent=p?"Pause":"Play";}
+$("prev").onclick=()=>go(stage-1);$("next").onclick=()=>go(stage+1);
+$("play").onclick=()=>{if(!playing&&stage===STAGES.length-1)go(0);setPlaying(!playing);};
+addEventListener("keydown",e=>{if(e.key==="ArrowRight")go(stage+1);if(e.key==="ArrowLeft")go(stage-1);if(e.key===" "){e.preventDefault();$("play").click();}});
+
+/* ---------- theme + resize ---------- */
+function theme(){const d=isDark();scene.background=new THREE.Color(d?0x0a0e16:0xeef1f6);floorMat.color.set(d?0x111827:0xdfe5ee).convertSRGBToLinear();
+  hemi.intensity=d?0.7:0.85;zones.forEach(z=>z.material.opacity=d?0.16:0.22);sprites.forEach(s=>{if(s.userData.redraw)s.userData.redraw();if(s.userData.cv)s.userData.last=null;});gaugeKey="";resetAll(stage);}
+matchMedia("(prefers-color-scheme: light)").addEventListener("change",theme);
+new MutationObserver(theme).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+addEventListener("resize",resize);
+
+/* ---------- loop ---------- */
+let last=performance.now();
+function frame(now){requestAnimationFrame(frame);const dt=Math.min(0.05,(now-last)/1000);last=now;
+  const t=(now-stageStart)/1000;update(stage,t);
+  const [pos,look]=STAGES[stage].cam;const f=camera.aspect<0.9?1.7:camera.aspect<1.3?1.25:1;
+  const tp=look.clone().add(pos.clone().sub(look).multiplyScalar(f));
+  if(!camInit){camPos.copy(tp);camLook.copy(look);camInit=true;}
+  const k=1-Math.exp(-dt*2.6);camPos.lerp(tp,k);camLook.lerp(look,k);
+  camera.position.copy(camPos);camera.lookAt(camLook);
+  renderer.render(scene,camera);
+  if(playing&&t>STAGES[stage].dur){if(stage<STAGES.length-1)go(stage+1);else setPlaying(false);}
+}
+function linearizeColors(){const seen=new Set();scene.traverse(o=>{const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
+  ms.forEach(m=>{if(seen.has(m)||m.isSpriteMaterial)return;seen.add(m);if(m.color)m.color.convertSRGBToLinear();if(m.emissive)m.emissive.convertSRGBToLinear();});});}
+function enableShadows(){scene.traverse(o=>{if(o.isMesh&&!o.material.isMeshBasicMaterial&&o!==floor){o.castShadow=true;o.receiveShadow=true;}});floor.receiveShadow=true;}
+function start(){linearizeColors();enableShadows();theme();resize();
+  const m=/stage=(\d+)/.exec(location.hash);if(m){setPlaying(false);go(+m[1]-1);camInit=false;}else{setPlaying(playing);go(0);}
+  requestAnimationFrame(frame);}
+const fontsReady=document.fonts&&document.fonts.ready?Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,1500))]):Promise.resolve();
+fontsReady.then(start);
+})();
+</script>
+</body>
+</html>
